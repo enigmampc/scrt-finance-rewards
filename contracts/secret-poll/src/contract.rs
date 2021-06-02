@@ -58,8 +58,13 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     msg: HandleMsg,
 ) -> StdResult<HandleResponse> {
     match msg {
-        HandleMsg::Vote { .. } => unimplemented!(),
-        HandleMsg::UpdateVotingPower { .. } => unimplemented!(),
+        HandleMsg::Vote {
+            choice,
+            staking_pool_viewing_key,
+        } => vote(deps, env, choice, staking_pool_viewing_key),
+        HandleMsg::UpdateVotingPower { voter, new_power } => {
+            update_voting_power(deps, env, voter, new_power.u128())
+        }
         HandleMsg::Finalize { .. } => unimplemented!(),
     }
 }
@@ -68,7 +73,13 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     msg: QueryMsg,
 ) -> StdResult<Binary> {
-    unimplemented!()
+    match msg {
+        QueryMsg::Choices { .. } => unimplemented!(),
+        QueryMsg::HasVoted { .. } => unimplemented!(),
+        QueryMsg::Voters { .. } => unimplemented!(),
+        QueryMsg::Tally { .. } => unimplemented!(),
+        QueryMsg::Vote { .. } => unimplemented!(),
+    }
 }
 
 pub fn vote<S: Storage, A: Api, Q: Querier>(
@@ -91,20 +102,20 @@ pub fn vote<S: Storage, A: Api, Q: Querier>(
             staking_pool.address,
         )?;
         *choice_tally += voting_power.amount.u128();
-        TypedStoreMut::attach(&mut deps.storage).store(TALLY_KEY, &tally)?;
-
-        store_vote(
-            deps,
-            env.message.sender.clone(),
-            choice,
-            voting_power.amount.u128(),
-        )?;
     } else {
         return Err(StdError::generic_err(format!(
             "choice {} does not exist in this poll",
             choice
         )));
     }
+
+    TypedStoreMut::attach(&mut deps.storage).store(TALLY_KEY, &tally)?;
+    store_vote(
+        deps,
+        env.message.sender.clone(),
+        choice,
+        voting_power.amount.u128(),
+    )?;
 
     Ok(HandleResponse {
         messages: vec![],
@@ -113,7 +124,40 @@ pub fn vote<S: Storage, A: Api, Q: Querier>(
     })
 }
 
-pub fn store_vote<S: Storage, A: Api, Q: Querier>(
+pub fn update_voting_power<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    voter: HumanAddr,
+    new_power: u128,
+) -> StdResult<HandleResponse> {
+    let staking_pool: SecretContract = TypedStore::attach(&deps.storage).load(STAKING_POOL_KEY)?;
+    if env.message.sender != staking_pool.address {
+        return Err(StdError::unauthorized());
+    }
+
+    let mut vote: Vote = TypedStoreMut::attach(&mut deps.storage).load(voter.0.as_bytes())?;
+    let mut tally: Tally = TypedStoreMut::attach(&mut deps.storage).load(TALLY_KEY)?;
+    if let Some(choice_tally) = tally.get_mut(&vote.choice) {
+        *choice_tally = *choice_tally - vote.voting_power + new_power;
+    } else {
+        // Shouldn't really happen but just in case
+        return Err(StdError::generic_err(format!(
+            "choice {} does not exist in this poll",
+            vote.choice
+        )));
+    }
+
+    TypedStoreMut::attach(&mut deps.storage).store(TALLY_KEY, &tally)?;
+    store_vote(deps, voter, vote.choice, vote.voting_power)?;
+
+    Ok(HandleResponse {
+        messages: vec![],
+        log: vec![log("voting_power_updated", voter.to_string())],
+        data: Some(to_binary(&ResponseStatus::Success)?),
+    })
+}
+
+fn store_vote<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     voter: HumanAddr,
     choice: u8,
