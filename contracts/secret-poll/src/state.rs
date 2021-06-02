@@ -10,6 +10,7 @@ pub const TALLY_KEY: &[u8] = b"tally";
 pub const METADATA_KEY: &[u8] = b"metadata";
 pub const CONFIG_KEY: &[u8] = b"config";
 pub const STAKING_POOL_KEY: &[u8] = b"stakingpool";
+pub const IS_OVER: &[u8] = b"isover";
 
 pub type ChoiceIdMap = Vec<(u8, String)>;
 pub type Tally = HashMap<u8, u128>;

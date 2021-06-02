@@ -5,7 +5,7 @@ use cosmwasm_std::{
 
 use crate::msg::{HandleMsg, InitMsg, QueryMsg, ResponseStatus};
 use crate::state::{
-    ChoiceIdMap, Tally, Vote, CHOICE_ID_MAP_KEY, CONFIG_KEY, METADATA_KEY, OWNER_KEY,
+    ChoiceIdMap, Tally, Vote, CHOICE_ID_MAP_KEY, CONFIG_KEY, IS_OVER, METADATA_KEY, OWNER_KEY,
     STAKING_POOL_KEY, TALLY_KEY,
 };
 use scrt_finance::types::SecretContract;
@@ -23,6 +23,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     TypedStoreMut::attach(&mut deps.storage).store(METADATA_KEY, &msg.metadata)?;
     TypedStoreMut::attach(&mut deps.storage).store(CONFIG_KEY, &msg.config)?;
     TypedStoreMut::attach(&mut deps.storage).store(STAKING_POOL_KEY, &msg.staking_pool)?;
+    TypedStoreMut::attach(&mut deps.storage).store(IS_OVER, &false)?;
 
     if msg.choices.len() > (u8::MAX - 1) as usize {
         return Err(StdError::generic_err(format!(
