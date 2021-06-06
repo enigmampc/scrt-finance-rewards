@@ -1,12 +1,11 @@
+use crate::msg::{HandleMsg, InitMsg, QueryMsg, ResponseStatus};
+use crate::state::{
+    ChoiceIdMap, StoredPollConfig, Tally, Vote, CHOICE_ID_MAP_KEY, CONFIG_KEY, METADATA_KEY,
+    OWNER_KEY, STAKING_POOL_KEY, TALLY_KEY,
+};
 use cosmwasm_std::{
     log, to_binary, Api, Binary, Env, Extern, HandleResponse, HumanAddr, InitResponse, Querier,
     StdError, StdResult, Storage, Uint128, WasmMsg,
-};
-
-use crate::msg::{HandleMsg, InitMsg, QueryMsg, ResponseStatus};
-use crate::state::{
-    ChoiceIdMap, Tally, Vote, CHOICE_ID_MAP_KEY, CONFIG_KEY, IS_OVER, METADATA_KEY, OWNER_KEY,
-    STAKING_POOL_KEY, TALLY_KEY,
 };
 use scrt_finance::types::SecretContract;
 use secret_toolkit::snip20;
@@ -19,11 +18,20 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     msg: InitMsg,
 ) -> StdResult<InitResponse> {
     let owner = env.message.sender;
-    TypedStoreMut::attach(&mut deps.storage).store(OWNER_KEY, &owner)?;
+    TypedStoreMut::attach(&mut deps.storage).store(OWNER_KEY, &owner)?; // This is in fact the factory contract
     TypedStoreMut::attach(&mut deps.storage).store(METADATA_KEY, &msg.metadata)?;
-    TypedStoreMut::attach(&mut deps.storage).store(CONFIG_KEY, &msg.config)?;
+
+    let ending = env.block.time + msg.config.duration;
+    TypedStoreMut::attach(&mut deps.storage).store(
+        CONFIG_KEY,
+        &StoredPollConfig {
+            end_timestamp: ending,
+            quorum: msg.config.quorum,
+            min_threshold: msg.config.min_threshold,
+        },
+    )?;
+
     TypedStoreMut::attach(&mut deps.storage).store(STAKING_POOL_KEY, &msg.staking_pool)?;
-    TypedStoreMut::attach(&mut deps.storage).store(IS_OVER, &false)?;
 
     if msg.choices.len() > (u8::MAX - 1) as usize {
         return Err(StdError::generic_err(format!(
@@ -80,6 +88,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
         QueryMsg::Voters { .. } => unimplemented!(),
         QueryMsg::Tally { .. } => unimplemented!(),
         QueryMsg::Vote { .. } => unimplemented!(),
+        QueryMsg::VoteInfo { .. } => unimplemented!(),
     }
 }
 
@@ -89,6 +98,8 @@ pub fn vote<S: Storage, A: Api, Q: Querier>(
     choice: u8,
     key: String,
 ) -> StdResult<HandleResponse> {
+    require_vote_ongoing(deps, &env)?;
+
     let mut tally: Tally = TypedStoreMut::attach(&mut deps.storage).load(TALLY_KEY)?;
 
     if let Some(choice_tally) = tally.get_mut(&choice) {
@@ -103,20 +114,20 @@ pub fn vote<S: Storage, A: Api, Q: Querier>(
             staking_pool.address,
         )?;
         *choice_tally += voting_power.amount.u128();
+
+        TypedStoreMut::attach(&mut deps.storage).store(TALLY_KEY, &tally)?;
+        store_vote(
+            deps,
+            env.message.sender.clone(),
+            choice,
+            voting_power.amount.u128(),
+        )?;
     } else {
         return Err(StdError::generic_err(format!(
             "choice {} does not exist in this poll",
             choice
         )));
     }
-
-    TypedStoreMut::attach(&mut deps.storage).store(TALLY_KEY, &tally)?;
-    store_vote(
-        deps,
-        env.message.sender.clone(),
-        choice,
-        voting_power.amount.u128(),
-    )?;
 
     Ok(HandleResponse {
         messages: vec![],
@@ -131,25 +142,27 @@ pub fn update_voting_power<S: Storage, A: Api, Q: Querier>(
     voter: HumanAddr,
     new_power: u128,
 ) -> StdResult<HandleResponse> {
-    let staking_pool: SecretContract = TypedStore::attach(&deps.storage).load(STAKING_POOL_KEY)?;
-    if env.message.sender != staking_pool.address {
+    require_vote_ongoing(deps, &env)?; // TODO Should maybe just return an empty Ok(HandleResponse) here?
+
+    let owner: HumanAddr = TypedStore::attach(&deps.storage).load(OWNER_KEY)?;
+    if env.message.sender != owner {
         return Err(StdError::unauthorized());
     }
 
-    let mut vote: Vote = TypedStoreMut::attach(&mut deps.storage).load(voter.0.as_bytes())?;
+    let vote: Vote = TypedStore::attach(&deps.storage).load(voter.0.as_bytes())?;
     let mut tally: Tally = TypedStoreMut::attach(&mut deps.storage).load(TALLY_KEY)?;
     if let Some(choice_tally) = tally.get_mut(&vote.choice) {
         *choice_tally = *choice_tally - vote.voting_power + new_power;
+
+        TypedStoreMut::attach(&mut deps.storage).store(TALLY_KEY, &tally)?;
+        store_vote(deps, voter.clone(), vote.choice, vote.voting_power)?;
     } else {
-        // Shouldn't really happen but just in case
+        // Shouldn't really happen since user already voted, but just in case
         return Err(StdError::generic_err(format!(
             "choice {} does not exist in this poll",
             vote.choice
         )));
     }
-
-    TypedStoreMut::attach(&mut deps.storage).store(TALLY_KEY, &tally)?;
-    store_vote(deps, voter, vote.choice, vote.voting_power)?;
 
     Ok(HandleResponse {
         messages: vec![],
@@ -167,6 +180,7 @@ fn store_vote<S: Storage, A: Api, Q: Querier>(
     TypedStoreMut::attach(&mut deps.storage).store(
         // TODO: We might want to iterate over every voter at some point (or e.g. return a list of voters).
         // TODO: In that case we'd want to store it differently
+        // TODO: As an alternative, someone can just look for addresses which interacted with this contract
         voter.0.as_bytes(),
         &Vote {
             choice,
@@ -175,6 +189,36 @@ fn store_vote<S: Storage, A: Api, Q: Querier>(
     )?;
 
     Ok(())
+}
+
+fn require_vote_ongoing<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: &Env,
+) -> StdResult<()> {
+    if is_ended(deps, &env)? {
+        return Err(StdError::generic_err("vote has ended"));
+    }
+
+    Ok(())
+}
+
+fn require_vote_ended<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: &Env,
+) -> StdResult<()> {
+    if !is_ended(deps, &env)? {
+        return Err(StdError::generic_err("vote hasn't ended yet"));
+    }
+
+    Ok(())
+}
+
+fn is_ended<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: &Env,
+) -> StdResult<bool> {
+    let config: StoredPollConfig = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
+    Ok(env.block.time > config.end_timestamp)
 }
 
 #[cfg(test)]

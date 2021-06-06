@@ -33,7 +33,8 @@ pub enum QueryMsg {
     Choices {},
     HasVoted { voter: HumanAddr },
     Voters {},
-    Tally {}, // TODO: Only when poll is finished?
+    Tally {},
+    VoteInfo {},
 
     // Authenticated
     Vote { voter: HumanAddr, key: String },
