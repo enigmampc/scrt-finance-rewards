@@ -1,7 +1,7 @@
-use crate::msg::{HandleMsg, InitMsg, QueryMsg, ResponseStatus};
+use crate::msg::{HandleMsg, InitMsg, QueryAnswer, QueryMsg, ResponseStatus};
 use crate::state::{
-    ChoiceIdMap, StoredPollConfig, Tally, Vote, CHOICE_ID_MAP_KEY, CONFIG_KEY, METADATA_KEY,
-    OWNER_KEY, STAKING_POOL_KEY, TALLY_KEY,
+    read_vote, store_vote, ChoiceIdMap, StoredPollConfig, Tally, Vote, CHOICE_ID_MAP_KEY,
+    CONFIG_KEY, METADATA_KEY, OWNER_KEY, STAKING_POOL_KEY, TALLY_KEY,
 };
 use cosmwasm_std::{
     log, to_binary, Api, Binary, Env, Extern, HandleResponse, HumanAddr, InitResponse, Querier,
@@ -85,7 +85,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
     match msg {
         QueryMsg::Choices { .. } => unimplemented!(),
         QueryMsg::HasVoted { .. } => unimplemented!(),
-        QueryMsg::Voters { .. } => unimplemented!(),
+        // QueryMsg::Voters { .. } => unimplemented!(),
         QueryMsg::Tally { .. } => unimplemented!(),
         QueryMsg::Vote { .. } => unimplemented!(),
         QueryMsg::VoteInfo { .. } => unimplemented!(),
@@ -149,7 +149,7 @@ pub fn update_voting_power<S: Storage, A: Api, Q: Querier>(
         return Err(StdError::unauthorized());
     }
 
-    let vote: Vote = TypedStore::attach(&deps.storage).load(voter.0.as_bytes())?;
+    let vote = read_vote(deps, voter)?;
     let mut tally: Tally = TypedStoreMut::attach(&mut deps.storage).load(TALLY_KEY)?;
     if let Some(choice_tally) = tally.get_mut(&vote.choice) {
         *choice_tally = *choice_tally - vote.voting_power + new_power;
@@ -171,24 +171,24 @@ pub fn update_voting_power<S: Storage, A: Api, Q: Querier>(
     })
 }
 
-fn store_vote<S: Storage, A: Api, Q: Querier>(
-    deps: &mut Extern<S, A, Q>,
-    voter: HumanAddr,
-    choice: u8,
-    voting_power: u128,
-) -> StdResult<()> {
-    TypedStoreMut::attach(&mut deps.storage).store(
-        // TODO: We might want to iterate over every voter at some point (or e.g. return a list of voters).
-        // TODO: In that case we'd want to store it differently
-        // TODO: As an alternative, someone can just look for addresses which interacted with this contract
-        voter.0.as_bytes(),
-        &Vote {
-            choice,
-            voting_power,
-        },
-    )?;
+pub fn query_choices<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<Binary> {
+    let choices: ChoiceIdMap = TypedStore::attach(&deps.storage).load(CHOICE_ID_MAP_KEY)?;
+    Ok(to_binary(&QueryAnswer::Choices { choices })?)
+}
 
-    Ok(())
+pub fn query_vote_info<S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>,
+) -> StdResult<Binary> {
+    let config: StoredPollConfig = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
+    Ok(to_binary(&QueryAnswer::VoteInfo { vote_info: config })?)
+}
+
+pub fn query_has_voted<S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>,
+    voter: HumanAddr,
+) -> StdResult<Binary> {
+    let has_voted = read_vote(deps, voter).is_ok();
+    Ok(to_binary(&QueryAnswer::HasVoted { has_voted })?)
 }
 
 fn require_vote_ongoing<S: Storage, A: Api, Q: Querier>(
