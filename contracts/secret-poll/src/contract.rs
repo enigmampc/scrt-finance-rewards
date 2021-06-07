@@ -100,34 +100,26 @@ pub fn vote<S: Storage, A: Api, Q: Querier>(
 ) -> StdResult<HandleResponse> {
     require_vote_ongoing(deps, &env)?;
 
-    let mut tally: Tally = TypedStoreMut::attach(&mut deps.storage).load(TALLY_KEY)?;
+    let staking_pool: SecretContract = TypedStore::attach(&deps.storage).load(STAKING_POOL_KEY)?;
+    let voting_power = snip20::balance_query(
+        &deps.querier,
+        env.message.sender.clone(),
+        key,
+        256,
+        staking_pool.contract_hash,
+        staking_pool.address,
+    )?;
 
-    if let Some(choice_tally) = tally.get_mut(&choice) {
-        let staking_pool: SecretContract =
-            TypedStore::attach(&deps.storage).load(STAKING_POOL_KEY)?;
-        let voting_power = snip20::balance_query(
-            &deps.querier,
-            env.message.sender.clone(),
-            key,
-            256,
-            staking_pool.contract_hash,
-            staking_pool.address,
-        )?;
-        *choice_tally += voting_power.amount.u128();
-
-        TypedStoreMut::attach(&mut deps.storage).store(TALLY_KEY, &tally)?;
-        store_vote(
-            deps,
-            env.message.sender.clone(),
+    let prev_vote = read_vote(deps, &env.message.sender);
+    update_vote(
+        deps,
+        &env.message.sender,
+        prev_vote.ok(),
+        Vote {
             choice,
-            voting_power.amount.u128(),
-        )?;
-    } else {
-        return Err(StdError::generic_err(format!(
-            "choice {} does not exist in this poll",
-            choice
-        )));
-    }
+            voting_power: voting_power.amount.u128(),
+        },
+    )?;
 
     Ok(HandleResponse {
         messages: vec![],
@@ -142,31 +134,31 @@ pub fn update_voting_power<S: Storage, A: Api, Q: Querier>(
     voter: HumanAddr,
     new_power: u128,
 ) -> StdResult<HandleResponse> {
-    require_vote_ongoing(deps, &env)?; // TODO Should maybe just return an empty Ok(HandleResponse) here?
+    require_vote_ongoing(deps, &env)?; // TODO Should maybe just return Ok(HandleResponse::Failure) here?
 
     let owner: HumanAddr = TypedStore::attach(&deps.storage).load(OWNER_KEY)?;
     if env.message.sender != owner {
         return Err(StdError::unauthorized());
     }
 
-    let vote = read_vote(deps, voter)?;
-    let mut tally: Tally = TypedStoreMut::attach(&mut deps.storage).load(TALLY_KEY)?;
-    if let Some(choice_tally) = tally.get_mut(&vote.choice) {
-        *choice_tally = *choice_tally - vote.voting_power + new_power;
+    let mut logs = vec![];
+    if let Ok(prev_vote) = read_vote(deps, &voter) {
+        update_vote(
+            deps,
+            &voter,
+            Some(prev_vote.clone()),
+            Vote {
+                choice: prev_vote.choice,
+                voting_power: new_power,
+            },
+        )?;
 
-        TypedStoreMut::attach(&mut deps.storage).store(TALLY_KEY, &tally)?;
-        store_vote(deps, voter.clone(), vote.choice, vote.voting_power)?;
-    } else {
-        // Shouldn't really happen since user already voted, but just in case
-        return Err(StdError::generic_err(format!(
-            "choice {} does not exist in this poll",
-            vote.choice
-        )));
+        logs.push(log("voting_power_updated", voter.to_string()));
     }
 
     Ok(HandleResponse {
         messages: vec![],
-        log: vec![log("voting_power_updated", voter.to_string())],
+        log: logs,
         data: Some(to_binary(&ResponseStatus::Success)?),
     })
 }
@@ -187,8 +179,43 @@ pub fn query_has_voted<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     voter: HumanAddr,
 ) -> StdResult<Binary> {
-    let has_voted = read_vote(deps, voter).is_ok();
+    let has_voted = read_vote(deps, &voter).is_ok();
     Ok(to_binary(&QueryAnswer::HasVoted { has_voted })?)
+}
+
+fn update_vote<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    voter: &HumanAddr,
+    previous_vote: Option<Vote>,
+    new_vote: Vote,
+) -> StdResult<()> {
+    let mut tally: Tally = TypedStoreMut::attach(&mut deps.storage).load(TALLY_KEY)?;
+
+    if let Some(previous_vote) = previous_vote {
+        if let Some(choice_tally) = tally.get_mut(&previous_vote.choice) {
+            *choice_tally -= previous_vote.voting_power; // Can't underflow, `choice_tally` >= `old_vote.voting_power`
+        } else {
+            // Shouldn't really happen since user already voted, but just in case
+            return Err(StdError::generic_err(format!(
+                "previous choice {} does not exist in this poll",
+                previous_vote.choice
+            )));
+        }
+    }
+
+    if let Some(choice_tally) = tally.get_mut(&new_vote.choice) {
+        *choice_tally += new_vote.voting_power; // Can't overflow, `choice_tally` <= `gov_token.total_supply()`
+    } else {
+        return Err(StdError::generic_err(format!(
+            "choice {} does not exist in this poll",
+            new_vote.choice
+        )));
+    }
+
+    TypedStoreMut::attach(&mut deps.storage).store(TALLY_KEY, &tally)?;
+    store_vote(deps, voter, new_vote.choice, new_vote.voting_power)?; // This also discards the old vote, if exists
+
+    Ok(())
 }
 
 fn require_vote_ongoing<S: Storage, A: Api, Q: Querier>(

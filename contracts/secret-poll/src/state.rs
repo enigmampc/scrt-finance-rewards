@@ -29,7 +29,7 @@ pub struct PollMetadata {
     pub author: HumanAddr,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema)]
+#[derive(Serialize, Deserialize, JsonSchema, Clone)]
 pub struct Vote {
     pub choice: u8,
     pub voting_power: u128,
@@ -44,7 +44,7 @@ pub struct StoredPollConfig {
 
 pub fn store_vote<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
-    voter: HumanAddr,
+    voter: &HumanAddr,
     choice: u8,
     voting_power: u128,
 ) -> StdResult<()> {
@@ -64,7 +64,7 @@ pub fn store_vote<S: Storage, A: Api, Q: Querier>(
 
 pub fn read_vote<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
-    voter: HumanAddr,
+    voter: &HumanAddr,
 ) -> StdResult<Vote> {
     Ok(TypedStore::attach(&deps.storage).load(voter.0.as_bytes())?)
 }
