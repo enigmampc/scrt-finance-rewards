@@ -40,9 +40,9 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
         })
         .collect();
 
-    let mut tally: Tally = HashMap::new();
+    let mut tally: Tally = vec![0]; // The actual values will start at 1
     for choice in &choice_id_map {
-        tally.insert(choice.0, 0);
+        tally.insert(choice.0 as usize, 0);
     }
     TypedStoreMut::attach(&mut deps.storage).store(TALLY_KEY, &tally)?;
 
@@ -202,7 +202,7 @@ fn update_vote<S: Storage, A: Api, Q: Querier>(
     let mut tally: Tally = TypedStoreMut::attach(&mut deps.storage).load(TALLY_KEY)?;
 
     if let Some(previous_vote) = previous_vote {
-        if let Some(choice_tally) = tally.get_mut(&previous_vote.choice) {
+        if let Some(choice_tally) = tally.get_mut(previous_vote.choice as usize) {
             *choice_tally -= previous_vote.voting_power; // Can't underflow, `choice_tally` >= `old_vote.voting_power`
         } else {
             // Shouldn't really happen since user already voted, but just in case
@@ -213,7 +213,7 @@ fn update_vote<S: Storage, A: Api, Q: Querier>(
         }
     }
 
-    if let Some(choice_tally) = tally.get_mut(&new_vote.choice) {
+    if let Some(choice_tally) = tally.get_mut(new_vote.choice as usize) {
         *choice_tally += new_vote.voting_power; // Can't overflow, `choice_tally` <= `gov_token.total_supply()`
     } else {
         return Err(StdError::generic_err(format!(
