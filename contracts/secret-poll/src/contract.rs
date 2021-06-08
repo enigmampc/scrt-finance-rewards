@@ -53,7 +53,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         HandleMsg::UpdateVotingPower { voter, new_power } => {
             update_voting_power(deps, env, voter, new_power.u128())
         }
-        HandleMsg::Finalize { .. } => unimplemented!(),
+        HandleMsg::Finalize {} => finalize(deps, env),
     }
 }
 
@@ -69,6 +69,8 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
         QueryMsg::VoteInfo {} => query_vote_info(deps),
     }
 }
+
+// Handle
 
 pub fn vote<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
@@ -112,7 +114,7 @@ pub fn update_voting_power<S: Storage, A: Api, Q: Querier>(
     voter: HumanAddr,
     new_power: u128,
 ) -> StdResult<HandleResponse> {
-    require_vote_ongoing(deps)?; // TODO Should maybe just return Ok(HandleResponse::Failure) here?
+    require_vote_ongoing(deps)?;
 
     let owner: HumanAddr = TypedStore::attach(&deps.storage).load(OWNER_KEY)?;
     if env.message.sender != owner {
@@ -140,6 +142,26 @@ pub fn update_voting_power<S: Storage, A: Api, Q: Querier>(
         data: Some(to_binary(&ResponseStatus::Success)?),
     })
 }
+
+pub fn finalize<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+) -> StdResult<HandleResponse> {
+    let mut config: StoredPollConfig = TypedStoreMut::attach(&mut deps.storage).load(CONFIG_KEY)?;
+    if config.end_timestamp < env.block.time {
+        return Err(StdError::generic_err("vote has not ended yet"));
+    }
+
+    config.ended = true;
+    TypedStoreMut::attach(&mut deps.storage).store(CONFIG_KEY, &config)?;
+    Ok(HandleResponse {
+        messages: vec![],
+        log: vec![],
+        data: Some(to_binary(&ResponseStatus::Success)?),
+    })
+}
+
+// Query
 
 pub fn query_choices<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<Binary> {
     let config: StoredPollConfig = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
@@ -191,6 +213,8 @@ pub fn query_vote<S: Storage, A: Api, Q: Querier>(
         voting_power: Uint128(vote.voting_power),
     })?)
 }
+
+// Helper functions
 
 fn update_vote<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
