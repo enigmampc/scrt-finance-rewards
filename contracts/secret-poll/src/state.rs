@@ -6,7 +6,6 @@ use secret_toolkit::storage::{TypedStore, TypedStoreMut};
 use serde::{Deserialize, Serialize};
 
 pub const OWNER_KEY: &[u8] = b"owner";
-pub const CHOICE_ID_MAP_KEY: &[u8] = b"choiceidmap";
 pub const TALLY_KEY: &[u8] = b"tally";
 pub const METADATA_KEY: &[u8] = b"metadata";
 pub const CONFIG_KEY: &[u8] = b"config";
@@ -40,6 +39,8 @@ pub struct StoredPollConfig {
     pub end_timestamp: u64, // In seconds
     pub quorum: u8,         // X/100% (percentage)
     pub min_threshold: u8,  // X/100% (percentage)
+    pub choices: ChoiceIdMap,
+    pub ended: bool,
 }
 
 pub fn store_vote<S: Storage, A: Api, Q: Querier>(

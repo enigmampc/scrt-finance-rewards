@@ -1,7 +1,7 @@
 use crate::msg::{HandleMsg, InitMsg, QueryAnswer, QueryMsg, ResponseStatus};
 use crate::state::{
-    read_vote, store_vote, ChoiceIdMap, StoredPollConfig, Tally, Vote, CHOICE_ID_MAP_KEY,
-    CONFIG_KEY, METADATA_KEY, OWNER_KEY, STAKING_POOL_KEY, TALLY_KEY,
+    read_vote, store_vote, ChoiceIdMap, StoredPollConfig, Tally, Vote, CONFIG_KEY, METADATA_KEY,
+    OWNER_KEY, STAKING_POOL_KEY, TALLY_KEY,
 };
 use cosmwasm_std::{
     log, to_binary, Api, Binary, Env, Extern, HandleResponse, HumanAddr, InitResponse, Querier,
@@ -20,20 +20,9 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     let owner = env.message.sender;
     TypedStoreMut::attach(&mut deps.storage).store(OWNER_KEY, &owner)?; // This is in fact the factory contract
     TypedStoreMut::attach(&mut deps.storage).store(METADATA_KEY, &msg.metadata)?;
-
-    let ending = env.block.time + msg.config.duration;
-    TypedStoreMut::attach(&mut deps.storage).store(
-        CONFIG_KEY,
-        &StoredPollConfig {
-            end_timestamp: ending,
-            quorum: msg.config.quorum,
-            min_threshold: msg.config.min_threshold,
-        },
-    )?;
-
     TypedStoreMut::attach(&mut deps.storage).store(STAKING_POOL_KEY, &msg.staking_pool)?;
 
-    if msg.choices.len() > (u8::MAX - 1) as usize {
+    if msg.choices.len() > (u8::MAX) as usize {
         return Err(StdError::generic_err(format!(
             "the number of choices for a poll cannot exceed {}",
             u8::MAX - 1
@@ -50,13 +39,24 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
             (i, c.clone())
         })
         .collect();
-    TypedStoreMut::attach(&mut deps.storage).store(CHOICE_ID_MAP_KEY, &choice_id_map)?;
 
     let mut tally: Tally = HashMap::new();
-    for choice in choice_id_map {
+    for choice in &choice_id_map {
         tally.insert(choice.0, 0);
     }
     TypedStoreMut::attach(&mut deps.storage).store(TALLY_KEY, &tally)?;
+
+    let ending = env.block.time + msg.config.duration;
+    TypedStoreMut::attach(&mut deps.storage).store(
+        CONFIG_KEY,
+        &StoredPollConfig {
+            end_timestamp: ending,
+            quorum: msg.config.quorum,
+            min_threshold: msg.config.min_threshold,
+            choices: choice_id_map,
+            ended: false,
+        },
+    )?;
 
     Ok(InitResponse::default())
 }
@@ -83,12 +83,12 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
     msg: QueryMsg,
 ) -> StdResult<Binary> {
     match msg {
-        QueryMsg::Choices { .. } => unimplemented!(),
-        QueryMsg::HasVoted { .. } => unimplemented!(),
+        QueryMsg::Choices {} => query_choices(deps),
+        QueryMsg::HasVoted { voter } => query_has_voted(deps, voter),
         // QueryMsg::Voters { .. } => unimplemented!(),
-        QueryMsg::Tally { .. } => unimplemented!(),
-        QueryMsg::Vote { .. } => unimplemented!(),
-        QueryMsg::VoteInfo { .. } => unimplemented!(),
+        QueryMsg::Tally {} => unimplemented!(),
+        QueryMsg::Vote { voter, key } => unimplemented!(),
+        QueryMsg::VoteInfo {} => query_vote_info(deps),
     }
 }
 
@@ -98,7 +98,7 @@ pub fn vote<S: Storage, A: Api, Q: Querier>(
     choice: u8,
     key: String,
 ) -> StdResult<HandleResponse> {
-    require_vote_ongoing(deps, &env)?;
+    require_vote_ongoing(deps)?;
 
     let staking_pool: SecretContract = TypedStore::attach(&deps.storage).load(STAKING_POOL_KEY)?;
     let voting_power = snip20::balance_query(
@@ -134,7 +134,7 @@ pub fn update_voting_power<S: Storage, A: Api, Q: Querier>(
     voter: HumanAddr,
     new_power: u128,
 ) -> StdResult<HandleResponse> {
-    require_vote_ongoing(deps, &env)?; // TODO Should maybe just return Ok(HandleResponse::Failure) here?
+    require_vote_ongoing(deps)?; // TODO Should maybe just return Ok(HandleResponse::Failure) here?
 
     let owner: HumanAddr = TypedStore::attach(&deps.storage).load(OWNER_KEY)?;
     if env.message.sender != owner {
@@ -164,8 +164,10 @@ pub fn update_voting_power<S: Storage, A: Api, Q: Querier>(
 }
 
 pub fn query_choices<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<Binary> {
-    let choices: ChoiceIdMap = TypedStore::attach(&deps.storage).load(CHOICE_ID_MAP_KEY)?;
-    Ok(to_binary(&QueryAnswer::Choices { choices })?)
+    let config: StoredPollConfig = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
+    Ok(to_binary(&QueryAnswer::Choices {
+        choices: config.choices,
+    })?)
 }
 
 pub fn query_vote_info<S: Storage, A: Api, Q: Querier>(
@@ -182,6 +184,14 @@ pub fn query_has_voted<S: Storage, A: Api, Q: Querier>(
     let has_voted = read_vote(deps, &voter).is_ok();
     Ok(to_binary(&QueryAnswer::HasVoted { has_voted })?)
 }
+
+// pub fn query_tally<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<Binary> {
+//     require_vote_ended(deps)?;
+//
+//     let tally: Tally = TypedStore::attach(&deps.storage).load(TALLY_KEY)?;
+//     to_binary(&tally.iter().map(||))
+//     unimplemented!()
+// }
 
 fn update_vote<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
@@ -220,32 +230,25 @@ fn update_vote<S: Storage, A: Api, Q: Querier>(
 
 fn require_vote_ongoing<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
-    env: &Env,
 ) -> StdResult<()> {
-    if is_ended(deps, &env)? {
+    if is_ended(deps)? {
         return Err(StdError::generic_err("vote has ended"));
     }
 
     Ok(())
 }
 
-fn require_vote_ended<S: Storage, A: Api, Q: Querier>(
-    deps: &mut Extern<S, A, Q>,
-    env: &Env,
-) -> StdResult<()> {
-    if !is_ended(deps, &env)? {
+fn require_vote_ended<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<()> {
+    if !is_ended(deps)? {
         return Err(StdError::generic_err("vote hasn't ended yet"));
     }
 
     Ok(())
 }
 
-fn is_ended<S: Storage, A: Api, Q: Querier>(
-    deps: &mut Extern<S, A, Q>,
-    env: &Env,
-) -> StdResult<bool> {
+fn is_ended<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<bool> {
     let config: StoredPollConfig = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
-    Ok(env.block.time > config.end_timestamp)
+    Ok(config.ended)
 }
 
 #[cfg(test)]
