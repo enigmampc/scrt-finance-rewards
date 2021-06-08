@@ -1,5 +1,4 @@
 //! This integration test tries to run and call the generated wasm.
-pub mod state;
 //! It depends on a Wasm build being available, which you can create with `cargo wasm`.
 //! Then running `cargo integration-test` will validate we can properly call into that generated Wasm.
 //!
@@ -17,3 +16,4 @@ pub mod state;
 //!          //...
 //!      });
 //! 4. Anywhere you see query(&deps, ...) you must replace it with query(&mut deps, ...)
+// pub mod state;

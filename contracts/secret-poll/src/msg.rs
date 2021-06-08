@@ -1,4 +1,4 @@
-use crate::state::{ChoiceIdMap, PollConfig, PollMetadata, StoredPollConfig, Tally};
+use crate::state::{PollConfig, PollMetadata, StoredPollConfig, Tally};
 use cosmwasm_std::{HumanAddr, Uint128};
 use schemars::JsonSchema;
 use scrt_finance::types::SecretContract;
@@ -43,7 +43,7 @@ pub enum QueryMsg {
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryAnswer {
-    Choices { choices: ChoiceIdMap },
+    Choices { choices: Vec<String> },
     HasVoted { has_voted: bool },
     Tally { tally: Tally },
     VoteInfo { vote_info: StoredPollConfig },

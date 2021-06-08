@@ -1,5 +1,4 @@
 use cosmwasm_std::{Api, Extern, HumanAddr, Querier, StdResult, Storage};
-use std::collections::HashMap;
 
 use schemars::JsonSchema;
 use secret_toolkit::storage::{TypedStore, TypedStoreMut};
@@ -11,7 +10,6 @@ pub const METADATA_KEY: &[u8] = b"metadata";
 pub const CONFIG_KEY: &[u8] = b"config";
 pub const STAKING_POOL_KEY: &[u8] = b"stakingpool";
 
-pub type ChoiceIdMap = Vec<(u8, String)>;
 pub type Tally = Vec<u128>;
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -39,7 +37,7 @@ pub struct StoredPollConfig {
     pub end_timestamp: u64, // In seconds
     pub quorum: u8,         // X/100% (percentage)
     pub min_threshold: u8,  // X/100% (percentage)
-    pub choices: ChoiceIdMap,
+    pub choices: Vec<String>,
     pub ended: bool,
 }
 
