@@ -1,6 +1,7 @@
-use crate::msg::{HandleMsg, InitMsg, QueryAnswer, QueryMsg, ResponseStatus};
+use crate::msg::{FinalizeAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg, ResponseStatus};
+use crate::querier::query_staking_balance;
 use crate::state::{
-    read_vote, store_vote, StoredPollConfig, Tally, Vote, CONFIG_KEY, METADATA_KEY, OWNER_KEY,
+    read_vote, store_vote, StoredPollConfig, Vote, CONFIG_KEY, METADATA_KEY, OWNER_KEY,
     STAKING_POOL_KEY, TALLY_KEY,
 };
 use cosmwasm_std::{
@@ -22,7 +23,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     TypedStoreMut::attach(&mut deps.storage).store(METADATA_KEY, &msg.metadata)?;
     TypedStoreMut::attach(&mut deps.storage).store(STAKING_POOL_KEY, &msg.staking_pool)?;
 
-    let tally: Tally = vec![0; msg.choices.len()];
+    let tally: Vec<u128> = vec![0; msg.choices.len()];
     TypedStoreMut::attach(&mut deps.storage).store(TALLY_KEY, &tally)?;
 
     let ending = env.block.time + msg.config.duration;
@@ -34,6 +35,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
             min_threshold: msg.config.min_threshold,
             choices: msg.choices,
             ended: false,
+            passed_quorum: false,
         },
     )?;
 
@@ -153,11 +155,27 @@ pub fn finalize<S: Storage, A: Api, Q: Querier>(
     }
 
     config.ended = true;
+
+    let tally: Vec<u128> = TypedStore::attach(&deps.storage).load(TALLY_KEY)?;
+
+    // Check if passed quorum
+    let sefi_balance = query_staking_balance(deps)?;
+    let total_vote_count: u128 = tally.iter().sum();
+    let participation = 100 * total_vote_count / sefi_balance; // This should give a percentage integer X/100%
+
+    if participation > config.quorum as u128 {
+        config.passed_quorum = true;
+    }
+
     TypedStoreMut::attach(&mut deps.storage).store(CONFIG_KEY, &config)?;
     Ok(HandleResponse {
         messages: vec![],
         log: vec![],
-        data: Some(to_binary(&ResponseStatus::Success)?),
+        data: Some(to_binary(&FinalizeAnswer {
+            valid: config.passed_quorum,
+            choices: config.choices,
+            tally,
+        })?),
     })
 }
 
@@ -186,10 +204,14 @@ pub fn query_has_voted<S: Storage, A: Api, Q: Querier>(
 }
 
 pub fn query_tally<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<Binary> {
-    require_vote_ended(deps)?;
+    require_vote_ended_and_valid(deps)?; // Hopefully this provide a good enough anonymity set to resist offline attacks
 
-    let tally: Tally = TypedStore::attach(&deps.storage).load(TALLY_KEY)?;
-    Ok(to_binary(&QueryAnswer::Tally { tally })?)
+    let tally: Vec<u128> = TypedStore::attach(&deps.storage).load(TALLY_KEY)?;
+    let config: StoredPollConfig = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
+    Ok(to_binary(&QueryAnswer::Tally {
+        choices: config.choices,
+        tally,
+    })?)
 }
 
 pub fn query_vote<S: Storage, A: Api, Q: Querier>(
@@ -222,7 +244,7 @@ fn update_vote<S: Storage, A: Api, Q: Querier>(
     previous_vote: Option<Vote>,
     new_vote: Vote,
 ) -> StdResult<()> {
-    let mut tally: Tally = TypedStoreMut::attach(&mut deps.storage).load(TALLY_KEY)?;
+    let mut tally: Vec<u128> = TypedStoreMut::attach(&mut deps.storage).load(TALLY_KEY)?;
 
     if let Some(previous_vote) = previous_vote {
         if let Some(choice_tally) = tally.get_mut(previous_vote.choice as usize) {
@@ -254,24 +276,27 @@ fn update_vote<S: Storage, A: Api, Q: Querier>(
 fn require_vote_ongoing<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
 ) -> StdResult<()> {
-    if is_ended(deps)? {
+    let config: StoredPollConfig = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
+
+    if config.ended {
         return Err(StdError::generic_err("vote has ended"));
     }
 
     Ok(())
 }
 
-fn require_vote_ended<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<()> {
-    if !is_ended(deps)? {
+fn require_vote_ended_and_valid<S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>,
+) -> StdResult<()> {
+    let config: StoredPollConfig = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
+
+    if !config.ended {
         return Err(StdError::generic_err("vote hasn't ended yet"));
+    } else if !config.passed_quorum {
+        return Err(StdError::generic_err("vote hasn't passed quorum"));
     }
 
     Ok(())
-}
-
-fn is_ended<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<bool> {
-    let config: StoredPollConfig = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
-    Ok(config.ended)
 }
 
 #[cfg(test)]

@@ -10,8 +10,6 @@ pub const METADATA_KEY: &[u8] = b"metadata";
 pub const CONFIG_KEY: &[u8] = b"config";
 pub const STAKING_POOL_KEY: &[u8] = b"stakingpool";
 
-pub type Tally = Vec<u128>;
-
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct PollConfig {
     pub duration: u64,     // In seconds
@@ -39,6 +37,7 @@ pub struct StoredPollConfig {
     pub min_threshold: u8,  // X/100% (percentage)
     pub choices: Vec<String>,
     pub ended: bool,
+    pub passed_quorum: bool,
 }
 
 pub fn store_vote<S: Storage, A: Api, Q: Querier>(
