@@ -6,6 +6,7 @@
 
 # Build results
 target/
+*.wasm.gz
 
 # IDEs
 .vscode/

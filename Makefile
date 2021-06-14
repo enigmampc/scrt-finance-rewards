@@ -1,31 +1,33 @@
 .PHONY: compile _compile
 compile: _compile contract.wasm.gz
 _compile:
-	cargo build --target wasm32-unknown-unknown --locked
-	cp ./target/wasm32-unknown-unknown/debug/*.wasm ./contract.wasm
+	for path in $$(ls contracts); do \
+		make -C "contracts/$$path" compile; \
+		mv -f "contracts/$$path/contract.wasm.gz" "$$(basename $${path}).wasm.gz"; \
+	done
 
 .PHONY: compile-optimized _compile-optimized
 compile-optimized: _compile-optimized
 _compile-optimized:
-	RUSTFLAGS='-C link-arg=-s' cargo +nightly build --release --target wasm32-unknown-unknown --locked
-	@# The following line is not necessary, may work only on linux (extra size optimization)
-	# wasm-opt -Os ./target/wasm32-unknown-unknown/release/*.wasm -o .
-	cp ./target/wasm32-unknown-unknown/release/*.wasm ./build/
+	for path in $$(ls contracts); do \
+		make -C "contracts/$$path" compile-optimized; \
+		mv -f "contracts/$$path/contract.wasm" "$$(basename $${path}).wasm.gz"; \
+	done
 
 .PHONY: compile-w-debug-print _compile-w-debug-print
 compile-w-debug-print: _compile-w-debug-print
 _compile-w-debug-print:
-	RUSTFLAGS='-C link-arg=-s' cargo +nightly build --release --target wasm32-unknown-unknown --locked
-	cd contracts/lp-staking && RUSTFLAGS='-C link-arg=-s' cargo build --release --features debug-print --target wasm32-unknown-unknown --locked
-	#cd contracts/dummy_swap_data_receiver && RUSTFLAGS='-C link-arg=-s' cargo build --release --features debug-print --target wasm32-unknown-unknown --locked
-	cp ./target/wasm32-unknown-unknown/release/*.wasm ./build/
+	for path in $$(ls contracts); do \
+		make -C "contracts/$$path" compile-w-debug-print; \
+		mv -f "contracts/$$path/contract.wasm.gz" "$$(basename $${path}).wasm.gz"; \
+	done
 
 .PHONY: compile-optimized-reproducible
 compile-optimized-reproducible:
-	docker run --rm -v "$$(pwd)":/contract \
-		--mount type=volume,source="$$(basename "$$(pwd)")_cache",target=/code/target \
-		--mount type=volume,source=registry_cache,target=/usr/local/cargo/registry \
-		enigmampc/secret-contract-optimizer:1.0.4
+	for path in $$(ls contracts); do \
+		make -C "contracts/$$path" compile-optimized-reproducible; \
+		mv -f "contracts/$$path/contract.wasm.gz" "$$(basename $${path}).wasm.gz"; \
+    done
 
 .PHONY: start-server
 start-server: # CTRL+C to stop
@@ -37,3 +39,4 @@ start-server: # CTRL+C to stop
 clean:
 	cargo clean
 	rm -f ./build/*
+	rm -rf contracts/*/target
