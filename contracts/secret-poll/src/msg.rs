@@ -10,7 +10,6 @@ pub struct InitMsg {
     pub config: PollConfig,
     pub choices: Vec<String>,
     pub staking_pool: SecretContract,
-    pub prng_seed: Binary,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
