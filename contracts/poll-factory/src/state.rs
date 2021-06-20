@@ -8,6 +8,7 @@ pub const ADMIN_KEY: &[u8] = b"admin";
 pub const CONFIG_KEY: &[u8] = b"config";
 pub const DEFAULT_POLL_CONFIG_KEY: &[u8] = b"defaultconfig";
 pub const CURRENT_CHALLENGE_KEY: &[u8] = b"prngseed";
+pub const ACTIVE_POLLS_KEY: &[u8] = b"active_polls";
 
 #[derive(Serialize, Deserialize)]
 pub struct Config {
@@ -25,5 +26,6 @@ pub struct PollContract {
 
 #[derive(Serialize, Deserialize)]
 pub struct ActivePoll {
-    pub id: u64,
+    pub address: HumanAddr,
+    pub end_time: u64,
 }

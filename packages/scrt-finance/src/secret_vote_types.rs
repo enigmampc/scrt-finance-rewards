@@ -3,7 +3,7 @@ use cosmwasm_std::{Binary, HumanAddr, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, JsonSchema)]
+#[derive(Serialize, Deserialize, JsonSchema, Clone)]
 pub struct PollConfig {
     pub duration: u64,     // In seconds
     pub quorum: u8,        // X/100% (percentage)
@@ -50,6 +50,7 @@ pub enum PollFactoryHandleMsg {
     // Poll contract callback
     RegisterForUpdates {
         challenge: String,
+        end_time: u64,
     },
 
     // Admin
