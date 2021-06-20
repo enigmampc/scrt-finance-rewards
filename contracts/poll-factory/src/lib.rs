@@ -1,3 +1,4 @@
+pub mod challenge;
 pub mod contract;
 pub mod msg;
 pub mod querier;

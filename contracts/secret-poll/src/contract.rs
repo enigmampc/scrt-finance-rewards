@@ -5,8 +5,8 @@ use crate::state::{
     STAKING_POOL_KEY, TALLY_KEY,
 };
 use cosmwasm_std::{
-    log, to_binary, Api, Binary, Env, Extern, HandleResponse, HumanAddr, InitResponse, Querier,
-    StdError, StdResult, Storage, Uint128,
+    log, to_binary, Api, Binary, CosmosMsg, Env, Extern, HandleResponse, HumanAddr, InitResponse,
+    Querier, StdError, StdResult, Storage, Uint128, WasmMsg,
 };
 use scrt_finance::secret_vote_types::PollInitMsg;
 use scrt_finance::types::SecretContract;
@@ -57,7 +57,20 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
         },
     )?;
 
-    Ok(InitResponse::default())
+    let mut messages = vec![];
+    if let Some(init_hook) = msg.init_hook {
+        messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: init_hook.contract_addr,
+            callback_code_hash: init_hook.code_hash,
+            msg: init_hook.msg,
+            send: vec![],
+        }));
+    }
+
+    Ok(InitResponse {
+        messages,
+        log: vec![],
+    })
 }
 
 pub fn handle<S: Storage, A: Api, Q: Querier>(

@@ -1,12 +1,29 @@
 use cosmwasm_std::{Api, Extern, HumanAddr, Querier, StdResult, Storage};
 
 use schemars::JsonSchema;
-use secret_toolkit::storage::{TypedStore, TypedStoreMut};
+use scrt_finance::types::SecretContract;
 use serde::{Deserialize, Serialize};
 
 pub const ADMIN_KEY: &[u8] = b"admin";
 pub const CONFIG_KEY: &[u8] = b"config";
-pub const STAKING_POOL_KEY: &[u8] = b"stakingpool";
-pub const POLL_CODE_ID_KEY: &[u8] = b"pollcodeid";
 pub const DEFAULT_POLL_CONFIG_KEY: &[u8] = b"defaultconfig";
-pub const INTERNAL_ID_COUNTER_KEY: &[u8] = b"internalid";
+pub const CURRENT_CHALLENGE_KEY: &[u8] = b"prngseed";
+
+#[derive(Serialize, Deserialize)]
+pub struct Config {
+    pub poll_contract: PollContract,
+    pub staking_pool: SecretContract,
+    pub id_counter: u128,
+    pub prng_seed: [u8; 32],
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct PollContract {
+    pub code_id: u64,
+    pub code_hash: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ActivePoll {
+    pub id: u64,
+}
