@@ -22,7 +22,7 @@ pub struct StoredPollConfig {
     pub min_threshold: u8,  // X/100% (percentage)
     pub choices: Vec<String>,
     pub ended: bool,
-    pub passed_quorum: bool,
+    pub valid: bool,
 }
 
 pub fn store_vote<S: Storage, A: Api, Q: Querier>(

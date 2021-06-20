@@ -24,6 +24,23 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     TypedStoreMut::attach(&mut deps.storage).store(METADATA_KEY, &msg.metadata)?;
     TypedStoreMut::attach(&mut deps.storage).store(STAKING_POOL_KEY, &msg.staking_pool)?;
 
+    if msg.choices.len() < 2 {
+        return Err(StdError::generic_err(
+            "you have to provide at least two choices",
+        ));
+    }
+    // Sanity checks to prevent starting a new poll by mistake
+    if msg.metadata.title.len() < 2 {
+        return Err(StdError::generic_err(
+            "poll title must be at least 2 characters long",
+        ));
+    }
+    if msg.metadata.description.len() < 3 {
+        return Err(StdError::generic_err(
+            "poll description must be at least 2 characters long",
+        ));
+    }
+
     let tally: Vec<u128> = vec![0; msg.choices.len()];
     TypedStoreMut::attach(&mut deps.storage).store(TALLY_KEY, &tally)?;
 
@@ -36,7 +53,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
             min_threshold: msg.config.min_threshold,
             choices: msg.choices,
             ended: false,
-            passed_quorum: false,
+            valid: false,
         },
     )?;
 
@@ -159,13 +176,17 @@ pub fn finalize<S: Storage, A: Api, Q: Querier>(
 
     let tally: Vec<u128> = TypedStore::attach(&deps.storage).load(TALLY_KEY)?;
 
-    // Check if passed quorum
+    // Validation tests
     let sefi_balance = query_staking_balance(deps)?;
     let total_vote_count: u128 = tally.iter().sum();
     let participation = 100 * total_vote_count / sefi_balance; // This should give a percentage integer X/100%
-
     if participation > config.quorum as u128 {
-        config.passed_quorum = true;
+        config.valid = true;
+    }
+    if let Some(winning_choice) = tally.iter().max() {
+        config.valid = config.valid && (*winning_choice > config.min_threshold as u128)
+    } else {
+        return Err(StdError::generic_err("storage is corrupted")); // iter().max() returns `None` only when the Vec is empty
     }
 
     TypedStoreMut::attach(&mut deps.storage).store(CONFIG_KEY, &config)?;
@@ -173,7 +194,7 @@ pub fn finalize<S: Storage, A: Api, Q: Querier>(
         messages: vec![],
         log: vec![],
         data: Some(to_binary(&FinalizeAnswer {
-            valid: config.passed_quorum,
+            valid: config.valid,
             choices: config.choices,
             tally,
         })?),
@@ -293,7 +314,7 @@ fn require_vote_ended_and_valid<S: Storage, A: Api, Q: Querier>(
 
     if !config.ended {
         return Err(StdError::generic_err("vote hasn't ended yet"));
-    } else if !config.passed_quorum {
+    } else if !config.valid {
         return Err(StdError::generic_err("vote hasn't passed quorum"));
     }
 
