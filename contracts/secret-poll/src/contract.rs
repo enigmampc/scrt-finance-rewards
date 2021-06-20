@@ -1,4 +1,4 @@
-use crate::msg::{FinalizeAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg, ResponseStatus};
+use crate::msg::{FinalizeAnswer, HandleMsg, QueryAnswer, QueryMsg, ResponseStatus};
 use crate::querier::query_staking_balance;
 use crate::state::{
     read_vote, store_vote, StoredPollConfig, Vote, CONFIG_KEY, METADATA_KEY, OWNER_KEY,
@@ -8,6 +8,7 @@ use cosmwasm_std::{
     log, to_binary, Api, Binary, Env, Extern, HandleResponse, HumanAddr, InitResponse, Querier,
     StdError, StdResult, Storage, Uint128,
 };
+use scrt_finance::secret_vote_types::PollInitMsg;
 use scrt_finance::types::SecretContract;
 use secret_toolkit::snip20;
 use secret_toolkit::snip20::balance_query;
@@ -16,7 +17,7 @@ use secret_toolkit::storage::{TypedStore, TypedStoreMut};
 pub fn init<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
-    msg: InitMsg,
+    msg: PollInitMsg,
 ) -> StdResult<InitResponse> {
     let owner = env.message.sender;
     TypedStoreMut::attach(&mut deps.storage).store(OWNER_KEY, &owner)?; // This is in fact the factory contract

@@ -1,5 +1,4 @@
 use cosmwasm_std::{Api, Extern, HumanAddr, Querier, StdResult, Storage};
-
 use schemars::JsonSchema;
 use secret_toolkit::storage::{TypedStore, TypedStoreMut};
 use serde::{Deserialize, Serialize};
@@ -9,20 +8,6 @@ pub const TALLY_KEY: &[u8] = b"tally";
 pub const METADATA_KEY: &[u8] = b"metadata";
 pub const CONFIG_KEY: &[u8] = b"config";
 pub const STAKING_POOL_KEY: &[u8] = b"stakingpool";
-
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct PollConfig {
-    pub duration: u64,     // In seconds
-    pub quorum: u8,        // X/100% (percentage)
-    pub min_threshold: u8, // X/100% (percentage)
-}
-
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct PollMetadata {
-    pub title: String,
-    pub description: String,
-    pub author: HumanAddr,
-}
 
 #[derive(Serialize, Deserialize, JsonSchema, Clone)]
 pub struct Vote {
