@@ -10,7 +10,7 @@ pub struct PollConfig {
     pub min_threshold: u8, // X/100% (percentage)
 }
 
-#[derive(Serialize, Deserialize, JsonSchema)]
+#[derive(Serialize, Deserialize, JsonSchema, Clone)]
 pub struct PollMetadata {
     pub title: String,
     pub description: String,
