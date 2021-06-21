@@ -143,13 +143,15 @@ fn register_for_updates<S: Storage, A: Api, Q: Querier>(
         TypedStoreMut::<Challenge, S>::attach(&mut deps.storage).remove(CURRENT_CHALLENGE_KEY);
     }
 
-    let mut active_polls: Vec<ActivePoll> = TypedStoreMut::attach(&mut deps.storage)
+    let mut active_polls_store = TypedStoreMut::<Vec<ActivePoll>, S>::attach(&mut deps.storage);
+    let mut active_polls = active_polls_store
         .load(ACTIVE_POLLS_KEY)
         .unwrap_or_default();
     active_polls.push(ActivePoll {
         address: env.message.sender.clone(),
         end_time,
     });
+    active_polls_store.store(ACTIVE_POLLS_KEY, &active_polls)?;
 
     Ok(HandleResponse {
         messages: vec![],
@@ -164,17 +166,26 @@ fn remove_inactive_polls<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: &Env,
 ) -> StdResult<()> {
-    let mut active_polls: Vec<ActivePoll> =
-        TypedStoreMut::attach(&mut deps.storage).load(ACTIVE_POLLS_KEY)?;
-
-    active_polls = active_polls
-        .into_iter()
-        .filter(|p| p.end_time >= env.block.time)
-        .collect();
-
-    TypedStoreMut::attach(&mut deps.storage).store(ACTIVE_POLLS_KEY, &active_polls)?;
+    let active_polls = get_active_polls(deps, env.block.time)?;
+    TypedStoreMut::<Vec<ActivePoll>, S>::attach(&mut deps.storage)
+        .store(ACTIVE_POLLS_KEY, &active_polls)?;
 
     Ok(())
+}
+
+fn get_active_polls<S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>,
+    current_time: u64,
+) -> StdResult<Vec<ActivePoll>> {
+    let mut active_polls_to_update: Vec<ActivePoll> =
+        TypedStore::attach(&deps.storage).load(ACTIVE_POLLS_KEY)?;
+
+    let active_polls = active_polls_to_update
+        .into_iter()
+        .filter(|p| p.end_time >= current_time)
+        .collect();
+
+    Ok(active_polls)
 }
 
 #[cfg(test)]
