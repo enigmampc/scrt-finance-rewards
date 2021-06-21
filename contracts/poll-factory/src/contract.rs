@@ -11,7 +11,7 @@ use cosmwasm_std::{
 };
 use scrt_finance::secret_vote_types::PollFactoryHandleMsg::RegisterForUpdates;
 use scrt_finance::secret_vote_types::{
-    InitHook, PollConfig, PollFactoryHandleMsg, PollInitMsg, PollMetadata,
+    InitHook, PollConfig, PollFactoryHandleMsg, PollHandleMsg, PollInitMsg, PollMetadata,
 };
 use scrt_finance::types::SecretContract;
 use secret_toolkit::snip20;
@@ -56,7 +56,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     env: Env,
     msg: PollFactoryHandleMsg,
 ) -> StdResult<HandleResponse> {
-    remove_inactive_polls(deps, &env)?; // TODO probably can call this only on `UpdateVotingPower`, leaving it here for now
+    let active_pools = remove_inactive_polls(deps, &env)?; // TODO probably can call this only on `UpdateVotingPower`, leaving it here for now
 
     match msg {
         PollFactoryHandleMsg::NewPoll {
@@ -70,7 +70,9 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
             poll_config.unwrap_or(TypedStore::attach(&deps.storage).load(DEFAULT_POLL_CONFIG_KEY)?),
             poll_choices,
         ),
-        PollFactoryHandleMsg::UpdateVotingPower { voter, new_power } => unimplemented!(),
+        PollFactoryHandleMsg::UpdateVotingPower { voter, new_power } => {
+            update_voting_power(deps, env, voter, new_power, active_pools)
+        }
         PollFactoryHandleMsg::UpdatePollCodeId { .. } => unimplemented!(),
         PollFactoryHandleMsg::UpdateDefaultPollConfig { .. } => unimplemented!(),
         PollFactoryHandleMsg::RegisterForUpdates {
@@ -160,24 +162,58 @@ fn register_for_updates<S: Storage, A: Api, Q: Querier>(
     })
 }
 
+fn update_voting_power<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    voter: HumanAddr,
+    new_power: Uint128,
+    active_polls: Vec<ActivePoll>,
+) -> StdResult<HandleResponse> {
+    let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
+    if env.message.sender != config.staking_pool.address {
+        return Err(StdError::unauthorized());
+    }
+
+    let update_msg = to_binary(&PollHandleMsg::UpdateVotingPower {
+        voter: voter.clone(),
+        new_power,
+    })?; // This API should be kept if a new poll contract is introduced
+
+    let mut messages = vec![];
+    for poll in active_polls {
+        messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: poll.address,
+            callback_code_hash: config.poll_contract.code_hash.clone(),
+            msg: update_msg.clone(),
+            send: vec![],
+        }))
+    }
+
+    Ok(HandleResponse {
+        messages,
+        log: vec![log("voting power update", voter.0)],
+        data: None,
+    })
+}
+
 // Helper functions
 
 fn remove_inactive_polls<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: &Env,
-) -> StdResult<()> {
+) -> StdResult<Vec<ActivePoll>> {
     let active_polls = get_active_polls(deps, env.block.time)?;
     TypedStoreMut::<Vec<ActivePoll>, S>::attach(&mut deps.storage)
         .store(ACTIVE_POLLS_KEY, &active_polls)?;
 
-    Ok(())
+    Ok(active_polls)
 }
 
 fn get_active_polls<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     current_time: u64,
 ) -> StdResult<Vec<ActivePoll>> {
-    let mut active_polls_to_update: Vec<ActivePoll> =
+    let active_polls_to_update: Vec<ActivePoll> =
         TypedStore::attach(&deps.storage).load(ACTIVE_POLLS_KEY)?;
 
     let active_polls = active_polls_to_update

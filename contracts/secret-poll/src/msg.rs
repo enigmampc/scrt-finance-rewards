@@ -7,20 +7,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum HandleMsg {
-    Vote {
-        choice: u8, // Arbitrary id that is given by the contract
-        staking_pool_viewing_key: String,
-    },
-    UpdateVotingPower {
-        voter: HumanAddr,
-        new_power: Uint128,
-    },
-    Finalize {},
-}
-
-#[derive(Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
 pub struct FinalizeAnswer {
     pub valid: bool,
     pub choices: Vec<String>,

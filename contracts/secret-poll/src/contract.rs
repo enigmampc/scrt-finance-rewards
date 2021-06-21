@@ -1,4 +1,4 @@
-use crate::msg::{FinalizeAnswer, HandleMsg, QueryAnswer, QueryMsg, ResponseStatus};
+use crate::msg::{FinalizeAnswer, QueryAnswer, QueryMsg, ResponseStatus};
 use crate::querier::query_staking_balance;
 use crate::state::{
     read_vote, store_vote, StoredPollConfig, Vote, CONFIG_KEY, METADATA_KEY, OWNER_KEY,
@@ -8,7 +8,7 @@ use cosmwasm_std::{
     log, to_binary, Api, Binary, CosmosMsg, Env, Extern, HandleResponse, HumanAddr, InitResponse,
     Querier, StdError, StdResult, Storage, Uint128, WasmMsg,
 };
-use scrt_finance::secret_vote_types::PollInitMsg;
+use scrt_finance::secret_vote_types::{PollHandleMsg, PollInitMsg};
 use scrt_finance::types::SecretContract;
 use secret_toolkit::snip20;
 use secret_toolkit::snip20::balance_query;
@@ -76,17 +76,17 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
 pub fn handle<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
-    msg: HandleMsg,
+    msg: PollHandleMsg,
 ) -> StdResult<HandleResponse> {
     match msg {
-        HandleMsg::Vote {
+        PollHandleMsg::Vote {
             choice,
             staking_pool_viewing_key,
         } => vote(deps, env, choice, staking_pool_viewing_key),
-        HandleMsg::UpdateVotingPower { voter, new_power } => {
+        PollHandleMsg::UpdateVotingPower { voter, new_power } => {
             update_voting_power(deps, env, voter, new_power.u128())
         }
-        HandleMsg::Finalize {} => finalize(deps, env),
+        PollHandleMsg::Finalize {} => finalize(deps, env),
     }
 }
 

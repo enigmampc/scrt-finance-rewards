@@ -26,6 +26,20 @@ pub struct PollInitMsg {
     pub init_hook: Option<InitHook>,
 }
 
+#[derive(Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PollHandleMsg {
+    Vote {
+        choice: u8, // Arbitrary id that is given by the contract
+        staking_pool_viewing_key: String,
+    },
+    UpdateVotingPower {
+        voter: HumanAddr,
+        new_power: Uint128,
+    },
+    Finalize {},
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InitHook {
     pub contract_addr: HumanAddr,
