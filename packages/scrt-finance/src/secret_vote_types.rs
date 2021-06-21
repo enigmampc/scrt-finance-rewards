@@ -68,7 +68,7 @@ pub enum PollFactoryHandleMsg {
     },
 
     // Admin
-    UpdatePollContract {
+    UpdatePollCode {
         new_id: u64,
         new_code_hash: String,
     },

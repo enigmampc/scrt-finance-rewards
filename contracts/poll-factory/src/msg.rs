@@ -1,4 +1,4 @@
-use crate::state::PollContract;
+use crate::state::{ActivePoll, PollContract};
 use cosmwasm_std::{Binary, HumanAddr, Uint128};
 use schemars::JsonSchema;
 use scrt_finance::secret_vote_types::{PollConfig, PollMetadata};
@@ -14,11 +14,25 @@ pub struct InitMsg {
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum QueryMsg {}
+pub enum QueryMsg {
+    ActivePolls {
+        current_time: u64, /* linux epoch */
+    },
+    DefaultPollConfig {},
+    StakingPool {},
+    PollCode {},
+    Admin {},
+}
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum QueryAnswer {}
+pub enum QueryAnswer {
+    ActivePolls { active_polls: Vec<ActivePoll> },
+    DefaultPollConfig { poll_config: PollConfig },
+    StakingPool { contract: SecretContract },
+    PollCode { contract: PollContract },
+    Admin { address: HumanAddr },
+}
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "snake_case")]

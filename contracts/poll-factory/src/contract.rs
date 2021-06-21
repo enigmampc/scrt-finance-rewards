@@ -73,7 +73,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         PollFactoryHandleMsg::UpdateVotingPower { voter, new_power } => {
             update_voting_power(deps, env, voter, new_power, active_pools)
         }
-        PollFactoryHandleMsg::UpdatePollContract {
+        PollFactoryHandleMsg::UpdatePollCode {
             new_id,
             new_code_hash,
         } => update_poll_contract(deps, env, new_id, new_code_hash),
@@ -93,8 +93,16 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     msg: QueryMsg,
 ) -> StdResult<Binary> {
-    unimplemented!()
+    match msg {
+        QueryMsg::ActivePolls { current_time } => query_active_polls(deps, current_time),
+        QueryMsg::DefaultPollConfig {} => query_default_poll_config(deps),
+        QueryMsg::StakingPool {} => query_staking_pool(deps),
+        QueryMsg::PollCode {} => query_poll_code(deps),
+        QueryMsg::Admin {} => query_admin(deps),
+    }
 }
+
+// Handle function
 
 fn new_poll<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
@@ -257,6 +265,50 @@ fn update_default_poll_config<S: Storage, A: Api, Q: Querier>(
         log: vec![],
         data: None,
     })
+}
+
+// Query function
+
+fn query_active_polls<S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>,
+    current_time: u64,
+) -> StdResult<Binary> {
+    let active_polls = get_active_polls(deps, current_time)?;
+
+    Ok(to_binary(&QueryAnswer::ActivePolls { active_polls })?)
+}
+
+fn query_default_poll_config<S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>,
+) -> StdResult<Binary> {
+    let default_poll_config: PollConfig =
+        TypedStore::attach(&deps.storage).load(DEFAULT_POLL_CONFIG_KEY)?;
+
+    Ok(to_binary(&QueryAnswer::DefaultPollConfig {
+        poll_config: default_poll_config,
+    })?)
+}
+
+fn query_staking_pool<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<Binary> {
+    let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
+
+    Ok(to_binary(&QueryAnswer::StakingPool {
+        contract: config.staking_pool,
+    })?)
+}
+
+fn query_poll_code<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<Binary> {
+    let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
+
+    Ok(to_binary(&QueryAnswer::PollCode {
+        contract: config.poll_contract,
+    })?)
+}
+
+fn query_admin<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<Binary> {
+    let admin: HumanAddr = TypedStore::attach(&deps.storage).load(ADMIN_KEY)?;
+
+    Ok(to_binary(&QueryAnswer::Admin { address: admin })?)
 }
 
 // Helper functions

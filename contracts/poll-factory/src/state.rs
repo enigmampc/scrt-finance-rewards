@@ -24,7 +24,7 @@ pub struct PollContract {
     pub code_hash: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, JsonSchema)]
 pub struct ActivePoll {
     pub address: HumanAddr,
     pub end_time: u64,
