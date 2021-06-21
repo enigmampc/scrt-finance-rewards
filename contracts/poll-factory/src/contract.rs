@@ -73,8 +73,15 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         PollFactoryHandleMsg::UpdateVotingPower { voter, new_power } => {
             update_voting_power(deps, env, voter, new_power, active_pools)
         }
-        PollFactoryHandleMsg::UpdatePollCodeId { .. } => unimplemented!(),
-        PollFactoryHandleMsg::UpdateDefaultPollConfig { .. } => unimplemented!(),
+        PollFactoryHandleMsg::UpdatePollContract {
+            new_id,
+            new_code_hash,
+        } => update_poll_contract(deps, env, new_id, new_code_hash),
+        PollFactoryHandleMsg::UpdateDefaultPollConfig {
+            duration,
+            quorum,
+            min_threshold,
+        } => update_default_poll_config(deps, env, duration, quorum, min_threshold),
         PollFactoryHandleMsg::RegisterForUpdates {
             challenge,
             end_time,
@@ -196,6 +203,62 @@ fn update_voting_power<S: Storage, A: Api, Q: Querier>(
     })
 }
 
+fn update_poll_contract<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    new_id: u64,
+    new_code_hash: String,
+) -> StdResult<HandleResponse> {
+    enforce_admin(deps, &env)?;
+
+    let mut config_store = TypedStoreMut::<Config, S>::attach(&mut deps.storage);
+    let mut config = config_store.load(CONFIG_KEY)?;
+    config.poll_contract = PollContract {
+        code_id: new_id,
+        code_hash: new_code_hash,
+    };
+    config_store.store(CONFIG_KEY, &config)?;
+
+    Ok(HandleResponse {
+        messages: vec![],
+        log: vec![],
+        data: Some(to_binary(&ResponseStatus::Success)?),
+    })
+}
+
+fn update_default_poll_config<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    duration: Option<u64>,
+    quorum: Option<u8>,
+    min_threshold: Option<u8>,
+) -> StdResult<HandleResponse> {
+    enforce_admin(deps, &env)?;
+
+    let mut poll_config_store = TypedStoreMut::<PollConfig, S>::attach(&mut deps.storage);
+    let mut default_config = poll_config_store.load(DEFAULT_POLL_CONFIG_KEY)?;
+
+    if let Some(new_duration) = duration {
+        default_config.duration = new_duration;
+    }
+
+    if let Some(new_quorum) = quorum {
+        default_config.quorum = new_quorum;
+    }
+
+    if let Some(new_threshold) = min_threshold {
+        default_config.min_threshold = new_threshold;
+    }
+
+    poll_config_store.store(DEFAULT_POLL_CONFIG_KEY, &default_config)?;
+
+    Ok(HandleResponse {
+        messages: vec![],
+        log: vec![],
+        data: None,
+    })
+}
+
 // Helper functions
 
 fn remove_inactive_polls<S: Storage, A: Api, Q: Querier>(
@@ -222,6 +285,19 @@ fn get_active_polls<S: Storage, A: Api, Q: Querier>(
         .collect();
 
     Ok(active_polls)
+}
+
+fn enforce_admin<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: &Env,
+) -> StdResult<()> {
+    let admin: HumanAddr = TypedStore::attach(&deps.storage).load(ADMIN_KEY)?;
+
+    if admin != env.message.sender {
+        return Err(StdError::unauthorized());
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
