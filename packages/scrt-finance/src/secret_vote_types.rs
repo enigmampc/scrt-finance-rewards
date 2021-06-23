@@ -72,10 +72,12 @@ pub enum PollFactoryHandleMsg {
         new_id: u64,
         new_code_hash: String,
     },
-
     UpdateDefaultPollConfig {
         duration: Option<u64>,     // In seconds
         quorum: Option<u8>,        // X/100% (percentage)
         min_threshold: Option<u8>, // X/100% (percentage)
+    },
+    ChangeAdmin {
+        new_admin: HumanAddr,
     },
 }

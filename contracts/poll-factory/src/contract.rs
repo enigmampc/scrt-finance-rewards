@@ -86,6 +86,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
             challenge,
             end_time,
         } => register_for_updates(deps, env, Challenge(challenge), end_time),
+        PollFactoryHandleMsg::ChangeAdmin { new_admin } => change_admin(deps, env, new_admin),
     }
 }
 
@@ -111,6 +112,8 @@ fn new_poll<S: Storage, A: Api, Q: Querier>(
     poll_config: PollConfig,
     poll_choices: Vec<String>,
 ) -> StdResult<HandleResponse> {
+    // TODO add a minimum staked SEFI check (configurable param)
+
     let mut config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
     let key = Challenge::new(&env, &config.prng_seed);
     TypedStoreMut::attach(&mut deps.storage).store(CURRENT_CHALLENGE_KEY, &key)?;
@@ -263,7 +266,23 @@ fn update_default_poll_config<S: Storage, A: Api, Q: Querier>(
     Ok(HandleResponse {
         messages: vec![],
         log: vec![],
-        data: None,
+        data: Some(to_binary(&ResponseStatus::Success)?),
+    })
+}
+
+fn change_admin<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    address: HumanAddr,
+) -> StdResult<HandleResponse> {
+    enforce_admin(deps, &env)?;
+
+    TypedStoreMut::attach(&mut deps.storage).store(ADMIN_KEY, &address)?;
+
+    Ok(HandleResponse {
+        messages: vec![],
+        log: vec![],
+        data: Some(to_binary(&ResponseStatus::Success)?),
     })
 }
 

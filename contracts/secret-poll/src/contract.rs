@@ -111,6 +111,8 @@ pub fn vote<S: Storage, A: Api, Q: Querier>(
     choice: u8,
     key: String,
 ) -> StdResult<HandleResponse> {
+    // TODO Add a queryable vote counter to simplify UI stuff
+
     require_vote_ongoing(deps)?;
 
     let staking_pool: SecretContract = TypedStore::attach(&deps.storage).load(STAKING_POOL_KEY)?;
