@@ -18,7 +18,8 @@ use scrt_finance::lp_staking_msg::{
     LPStakingQueryAnswer, LPStakingQueryMsg, LPStakingReceiveAnswer, LPStakingReceiveMsg,
 };
 use scrt_finance::master_msg::MasterHandleMsg;
-use scrt_finance::types::{RewardPool, TokenInfo, UserInfo};
+use scrt_finance::secret_vote_types::PollFactoryHandleMsg;
+use scrt_finance::types::{RewardPool, SecretContract, TokenInfo, UserInfo};
 use scrt_finance::viewing_key::{ViewingKey, VIEWING_KEY_SIZE};
 
 pub fn init<S: Storage, A: Api, Q: Querier>(
@@ -54,6 +55,10 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
 
     TypedStoreMut::<TokenInfo, S>::attach(&mut deps.storage)
         .store(TOKEN_INFO_KEY, &msg.token_info)?;
+
+    if let Some(subs) = msg.subscribers {
+        TypedStoreMut::attach(&mut deps.storage).store(SUBSCRIBERS_KEY, &subs)?;
+    }
 
     // Register sSCRT and incentivized token, set vks
     let messages = vec![
@@ -126,6 +131,8 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
             amount.u128(),
             hook.map(|h| from_binary(&h).unwrap()),
         ),
+        LPStakingHandleMsg::AddSubs { contracts } => add_subscribers(deps, env, contracts),
+        LPStakingHandleMsg::RemoveSubs { contracts } => remove_subscribers(deps, env, contracts),
         _ => Err(StdError::generic_err("Unavailable or unknown action")),
     };
 
@@ -141,6 +148,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
         LPStakingQueryMsg::RewardToken {} => query_reward_token(deps),
         LPStakingQueryMsg::IncentivizedToken {} => query_incentivized_token(deps),
         LPStakingQueryMsg::TokenInfo {} => query_token_info(deps),
+        LPStakingQueryMsg::Subscribers {} => query_subscribers(deps),
         _ => authenticated_queries(deps, msg),
     };
 
@@ -286,6 +294,13 @@ fn deposit_hook<S: Storage, A: Api, Q: Querier>(
     reward_pool.inc_token_supply += amount;
     TypedStoreMut::attach(&mut deps.storage).store(REWARD_POOL_KEY, &reward_pool)?;
 
+    let subs: Vec<SecretContract> = TypedStore::attach(&deps.storage).load(SUBSCRIBERS_KEY)?;
+    let sub_messages: StdResult<Vec<CosmosMsg>> = subs
+        .into_iter()
+        .map(|s| create_subscriber_msg(s, &from, user.locked))
+        .collect();
+    messages.extend(sub_messages?);
+
     Ok(HandleResponse {
         messages,
         log: vec![],
@@ -313,7 +328,7 @@ fn redeem<S: Storage, A: Api, Q: Querier>(
 
 fn redeem_hook<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
-    env: Env,
+    _env: Env,
     config: Config,
     mut reward_pool: RewardPool,
     to: HumanAddr,
@@ -365,13 +380,20 @@ fn redeem_hook<S: Storage, A: Api, Q: Querier>(
     TypedStoreMut::attach(&mut deps.storage).store(REWARD_POOL_KEY, &reward_pool)?;
 
     messages.push(secret_toolkit::snip20::transfer_msg(
-        to,
+        to.clone(),
         Uint128(amount),
         None,
         RESPONSE_BLOCK_SIZE,
         config.inc_token.contract_hash,
         config.inc_token.address,
     )?);
+
+    let subs: Vec<SecretContract> = TypedStore::attach(&deps.storage).load(SUBSCRIBERS_KEY)?;
+    let sub_messages: StdResult<Vec<CosmosMsg>> = subs
+        .into_iter()
+        .map(|s| create_subscriber_msg(s, &to, user.locked))
+        .collect();
+    messages.extend(sub_messages?);
 
     Ok(HandleResponse {
         messages,
@@ -524,6 +546,56 @@ fn emergency_redeem<S: Storage, A: Api, Q: Querier>(
     })
 }
 
+fn add_subscribers<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    new_subs: Vec<SecretContract>,
+) -> StdResult<HandleResponse> {
+    let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
+    enforce_admin(config.clone(), env)?;
+
+    let mut subs_store = TypedStoreMut::attach(&mut deps.storage);
+    let mut subs: Vec<SecretContract> = subs_store.load(SUBSCRIBERS_KEY)?;
+    subs.extend(new_subs);
+    subs_store.store(SUBSCRIBERS_KEY, &subs)?;
+
+    Ok(HandleResponse {
+        messages: vec![],
+        log: vec![],
+        data: Some(to_binary(&LPStakingHandleAnswer::AddSubs {
+            status: Success,
+        })?),
+    })
+}
+
+fn remove_subscribers<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    subs_to_remove: Vec<HumanAddr>,
+) -> StdResult<HandleResponse> {
+    let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
+    enforce_admin(config.clone(), env)?;
+
+    let mut subs_store = TypedStoreMut::attach(&mut deps.storage);
+    let mut subs: Vec<SecretContract> = subs_store.load(SUBSCRIBERS_KEY)?;
+
+    // TODO is there a better way to do this?
+    subs = subs
+        .into_iter()
+        .filter(|s| !subs_to_remove.contains(&s.address))
+        .collect();
+
+    subs_store.store(SUBSCRIBERS_KEY, &subs)?;
+
+    Ok(HandleResponse {
+        messages: vec![],
+        log: vec![],
+        data: Some(to_binary(&LPStakingHandleAnswer::RemoveSubs {
+            status: Success,
+        })?),
+    })
+}
+
 // Query functions
 
 fn query_pending_rewards<S: Storage, A: Api, Q: Querier>(
@@ -603,6 +675,12 @@ fn query_token_info<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> S
     })
 }
 
+fn query_subscribers<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<Binary> {
+    let subs: Vec<SecretContract> = TypedStore::attach(&deps.storage).load(SUBSCRIBERS_KEY)?;
+
+    to_binary(&LPStakingQueryAnswer::Subscribers { contracts: subs })
+}
+
 // Helper functions
 
 fn enforce_admin(config: Config, env: Env) -> StdResult<()> {
@@ -659,6 +737,22 @@ fn update_allocation(env: Env, config: Config, hook: Option<Binary>) -> StdResul
         log: vec![],
         data: None,
     })
+}
+
+fn create_subscriber_msg(
+    sub: SecretContract,
+    user: &HumanAddr,
+    new_vp: u128,
+) -> StdResult<CosmosMsg> {
+    Ok(CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: sub.address,
+        callback_code_hash: sub.contract_hash,
+        msg: to_binary(&PollFactoryHandleMsg::UpdateVotingPower {
+            voter: user.clone(),
+            new_power: Uint128(new_vp),
+        })?,
+        send: vec![],
+    }))
 }
 
 #[cfg(test)]

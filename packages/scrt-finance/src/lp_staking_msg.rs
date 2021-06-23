@@ -5,6 +5,17 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct LPStakingInitMsg {
+    pub reward_token: SecretContract,
+    pub inc_token: SecretContract,
+    pub master: SecretContract,
+    pub viewing_key: String,
+    pub token_info: TokenInfo,
+    pub prng_seed: Binary,
+    pub subscribers: Option<Vec<SecretContract>>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum LPStakingHandleMsg {
     Redeem {
@@ -34,22 +45,18 @@ pub enum LPStakingHandleMsg {
     ChangeAdmin {
         address: HumanAddr,
     },
+    AddSubs {
+        contracts: Vec<SecretContract>,
+    },
+    RemoveSubs {
+        contracts: Vec<HumanAddr>,
+    },
 
     // Master callbacks
     NotifyAllocation {
         amount: Uint128,
         hook: Option<Binary>,
     },
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct LPStakingInitMsg {
-    pub reward_token: SecretContract,
-    pub inc_token: SecretContract,
-    pub master: SecretContract,
-    pub viewing_key: String,
-    pub token_info: TokenInfo,
-    pub prng_seed: Binary,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug)]
@@ -64,6 +71,8 @@ pub enum LPStakingHandleAnswer {
     SetDeadline { status: LPStakingResponseStatus },
     ClaimRewardPool { status: LPStakingResponseStatus },
     EmergencyRedeem { status: LPStakingResponseStatus },
+    AddSubs { status: LPStakingResponseStatus },
+    RemoveSubs { status: LPStakingResponseStatus },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -99,6 +108,7 @@ pub enum LPStakingQueryMsg {
     ContractStatus {},
     RewardToken {},
     IncentivizedToken {},
+    Subscribers {},
 
     // Authenticated
     Rewards {
@@ -145,6 +155,9 @@ pub enum LPStakingQueryAnswer {
     },
     IncentivizedToken {
         token: SecretContract,
+    },
+    Subscribers {
+        contracts: Vec<SecretContract>,
     },
 
     QueryError {
