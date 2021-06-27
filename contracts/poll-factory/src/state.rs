@@ -1,4 +1,4 @@
-use cosmwasm_std::{Api, Extern, HumanAddr, Querier, StdResult, Storage};
+use cosmwasm_std::HumanAddr;
 use schemars::JsonSchema;
 use scrt_finance::secret_vote_types::PollContract;
 use scrt_finance::types::SecretContract;

@@ -15,7 +15,6 @@ use scrt_finance::secret_vote_types::{
 };
 use scrt_finance::types::SecretContract;
 use secret_toolkit::snip20;
-use secret_toolkit::snip20::balance_query;
 use secret_toolkit::storage::{TypedStore, TypedStoreMut};
 
 pub fn init<S: Storage, A: Api, Q: Querier>(

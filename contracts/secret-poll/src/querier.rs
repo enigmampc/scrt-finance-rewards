@@ -1,7 +1,6 @@
-use crate::state::{CONFIG_KEY, STAKING_POOL_KEY};
+use crate::state::STAKING_POOL_KEY;
 use cosmwasm_std::{
-    to_binary, Api, Extern, HumanAddr, Querier, QueryRequest, StdError, StdResult, Storage,
-    Uint128, WasmQuery,
+    to_binary, Api, Extern, Querier, QueryRequest, StdError, StdResult, Storage, WasmQuery,
 };
 use scrt_finance::lp_staking_msg::{LPStakingQueryAnswer, LPStakingQueryMsg};
 use scrt_finance::types::SecretContract;

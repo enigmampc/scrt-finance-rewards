@@ -1,8 +1,7 @@
 use crate::constants::CONFIG_KEY;
 use crate::state::Config;
 use cosmwasm_std::{
-    to_binary, Api, Extern, HumanAddr, Querier, QueryRequest, StdError, StdResult, Storage,
-    WasmQuery,
+    to_binary, Api, Extern, Querier, QueryRequest, StdError, StdResult, Storage, WasmQuery,
 };
 use scrt_finance::master_msg::{MasterQueryAnswer, MasterQueryMsg};
 use secret_toolkit::storage::TypedStore;

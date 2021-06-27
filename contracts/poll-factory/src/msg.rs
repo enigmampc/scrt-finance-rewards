@@ -1,7 +1,7 @@
 use crate::state::ActivePoll;
 use cosmwasm_std::{Binary, HumanAddr, Uint128};
 use schemars::JsonSchema;
-use scrt_finance::secret_vote_types::{PollConfig, PollContract, PollMetadata};
+use scrt_finance::secret_vote_types::{PollConfig, PollContract};
 use scrt_finance::types::SecretContract;
 use serde::{Deserialize, Serialize};
 
