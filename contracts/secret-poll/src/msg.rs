@@ -21,6 +21,7 @@ pub enum QueryMsg {
     HasVoted { voter: HumanAddr },
     Tally {},
     VoteInfo {},
+    NumberOfVoters {},
 
     // Authenticated
     Vote { voter: HumanAddr, key: String },
@@ -45,6 +46,9 @@ pub enum QueryAnswer {
     Vote {
         choice: u8,
         voting_power: Uint128,
+    },
+    NumberOfVoters {
+        count: u64,
     },
 }
 

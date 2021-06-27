@@ -8,6 +8,7 @@ pub const TALLY_KEY: &[u8] = b"tally";
 pub const METADATA_KEY: &[u8] = b"metadata";
 pub const CONFIG_KEY: &[u8] = b"config";
 pub const STAKING_POOL_KEY: &[u8] = b"stakingpool";
+pub const NUM_OF_VOTERS_KEY: &[u8] = b"numofvoters";
 
 #[derive(Serialize, Deserialize, JsonSchema, Clone)]
 pub struct Vote {

@@ -1,6 +1,5 @@
 use crate::challenge::{sha_256, Challenge};
 use crate::msg::{InitMsg, QueryAnswer, QueryMsg, ResponseStatus};
-use crate::querier::query_staking_balance;
 use crate::state::{
     ActivePoll, Config, ACTIVE_POLLS_KEY, ADMIN_KEY, CONFIG_KEY, CURRENT_CHALLENGE_KEY,
     DEFAULT_POLL_CONFIG_KEY,

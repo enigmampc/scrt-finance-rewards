@@ -1,8 +1,8 @@
 use crate::msg::{FinalizeAnswer, QueryAnswer, QueryMsg, ResponseStatus};
 use crate::querier::query_staking_balance;
 use crate::state::{
-    read_vote, store_vote, StoredPollConfig, Vote, CONFIG_KEY, METADATA_KEY, OWNER_KEY,
-    STAKING_POOL_KEY, TALLY_KEY,
+    read_vote, store_vote, StoredPollConfig, Vote, CONFIG_KEY, METADATA_KEY, NUM_OF_VOTERS_KEY,
+    OWNER_KEY, STAKING_POOL_KEY, TALLY_KEY,
 };
 use cosmwasm_std::{
     log, to_binary, Api, Binary, CosmosMsg, Env, Extern, HandleResponse, HumanAddr, InitResponse,
@@ -57,6 +57,8 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
         },
     )?;
 
+    TypedStoreMut::attach(&mut deps.storage).store(NUM_OF_VOTERS_KEY, &(0 as u64))?;
+
     let mut messages = vec![];
     if let Some(init_hook) = msg.init_hook {
         messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
@@ -100,6 +102,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
         QueryMsg::Tally {} => query_tally(deps),
         QueryMsg::Vote { voter, key } => query_vote(deps, voter, key),
         QueryMsg::VoteInfo {} => query_vote_info(deps),
+        QueryMsg::NumberOfVoters {} => query_num_of_voters(deps),
     }
 }
 
@@ -111,8 +114,6 @@ pub fn vote<S: Storage, A: Api, Q: Querier>(
     choice: u8,
     key: String,
 ) -> StdResult<HandleResponse> {
-    // TODO Add a queryable vote counter to simplify UI stuff
-
     require_vote_ongoing(deps)?;
 
     let staking_pool: SecretContract = TypedStore::attach(&deps.storage).load(STAKING_POOL_KEY)?;
@@ -125,11 +126,11 @@ pub fn vote<S: Storage, A: Api, Q: Querier>(
         staking_pool.address,
     )?;
 
-    let prev_vote = read_vote(deps, &env.message.sender);
+    let prev_vote = read_vote(deps, &env.message.sender).ok();
     update_vote(
         deps,
         &env.message.sender,
-        prev_vote.ok(),
+        prev_vote,
         Vote {
             choice,
             voting_power: voting_power.amount.u128(),
@@ -273,6 +274,15 @@ pub fn query_vote<S: Storage, A: Api, Q: Querier>(
     })?)
 }
 
+pub fn query_num_of_voters<S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>,
+) -> StdResult<Binary> {
+    let num_of_voters: u64 = TypedStore::attach(&deps.storage).load(NUM_OF_VOTERS_KEY)?;
+
+    Ok(to_binary(&QueryAnswer::NumberOfVoters {
+        count: num_of_voters,
+    })?)
+}
 // Helper functions
 
 fn update_vote<S: Storage, A: Api, Q: Querier>(
@@ -293,6 +303,11 @@ fn update_vote<S: Storage, A: Api, Q: Querier>(
                 previous_vote.choice
             )));
         }
+    } else {
+        // If it's a new vote - increment the number of voters
+        let mut voters_store = TypedStoreMut::attach(&mut deps.storage);
+        let num_of_voters: u64 = voters_store.load(NUM_OF_VOTERS_KEY)?;
+        voters_store.store(NUM_OF_VOTERS_KEY, &(num_of_voters + 1))?;
     }
 
     if let Some(choice_tally) = tally.get_mut(new_vote.choice as usize) {
