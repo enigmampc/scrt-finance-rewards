@@ -149,12 +149,17 @@ fn new_poll<S: Storage, A: Api, Q: Querier>(
             contract_addr: env.contract.address,
             code_hash: env.contract_code_hash,
             msg: to_binary(&RegisterForUpdates {
-                challenge: key.0,
+                challenge: key.clone().to_string(),
                 end_time: env.block.time + poll_config.duration, // If this fails, we have bigger problems than this :)
             })?,
         }),
     };
-    let label: String = format!("secret-poll-{}", config.id_counter); // TODO add random chars
+
+    let label = format!(
+        "secret-poll-{}-{}",
+        config.id_counter,
+        &key.to_string()[0..8],
+    );
 
     config.id_counter += 1;
     TypedStoreMut::attach(&mut deps.storage).store(CONFIG_KEY, &config)?;
