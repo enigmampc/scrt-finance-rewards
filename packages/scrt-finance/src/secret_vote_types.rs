@@ -3,6 +3,12 @@ use cosmwasm_std::{Binary, HumanAddr, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct PollContract {
+    pub code_id: u64,
+    pub code_hash: String,
+}
+
 #[derive(Serialize, Deserialize, JsonSchema, Clone)]
 pub struct PollConfig {
     pub duration: u64,     // In seconds
@@ -53,6 +59,7 @@ pub enum PollFactoryHandleMsg {
         poll_metadata: PollMetadata,
         poll_config: Option<PollConfig>,
         poll_choices: Vec<String>,
+        pool_viewing_key: String,
     },
 
     // Staking contrat callback
@@ -68,14 +75,15 @@ pub enum PollFactoryHandleMsg {
     },
 
     // Admin
-    UpdatePollCode {
-        new_id: u64,
-        new_code_hash: String,
-    },
     UpdateDefaultPollConfig {
         duration: Option<u64>,     // In seconds
         quorum: Option<u8>,        // X/100% (percentage)
         min_threshold: Option<u8>, // X/100% (percentage)
+    },
+    UpdateConfig {
+        new_poll_code: Option<PollContract>,
+        new_staking_pool: Option<SecretContract>,
+        new_min_stake_amount: Option<Uint128>,
     },
     ChangeAdmin {
         new_admin: HumanAddr,

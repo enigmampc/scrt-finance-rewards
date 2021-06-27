@@ -2,8 +2,8 @@ use crate::challenge::{sha_256, Challenge};
 use crate::msg::{InitMsg, QueryAnswer, QueryMsg, ResponseStatus};
 use crate::querier::query_staking_balance;
 use crate::state::{
-    ActivePoll, Config, PollContract, ACTIVE_POLLS_KEY, ADMIN_KEY, CONFIG_KEY,
-    CURRENT_CHALLENGE_KEY, DEFAULT_POLL_CONFIG_KEY,
+    ActivePoll, Config, ACTIVE_POLLS_KEY, ADMIN_KEY, CONFIG_KEY, CURRENT_CHALLENGE_KEY,
+    DEFAULT_POLL_CONFIG_KEY,
 };
 use cosmwasm_std::{
     log, to_binary, Api, Binary, CosmosMsg, Env, Extern, HandleResponse, HumanAddr, InitResponse,
@@ -11,7 +11,8 @@ use cosmwasm_std::{
 };
 use scrt_finance::secret_vote_types::PollFactoryHandleMsg::RegisterForUpdates;
 use scrt_finance::secret_vote_types::{
-    InitHook, PollConfig, PollFactoryHandleMsg, PollHandleMsg, PollInitMsg, PollMetadata,
+    InitHook, PollConfig, PollContract, PollFactoryHandleMsg, PollHandleMsg, PollInitMsg,
+    PollMetadata,
 };
 use scrt_finance::types::SecretContract;
 use secret_toolkit::snip20;
@@ -40,6 +41,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
             staking_pool: msg.staking_pool,
             id_counter: 0,
             prng_seed: prng_seed_hashed,
+            min_staked: msg.min_staked.u128(),
         },
     )?;
 
@@ -58,20 +60,18 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
             poll_metadata,
             poll_config,
             poll_choices,
+            pool_viewing_key,
         } => new_poll(
             deps,
             env,
             poll_metadata,
             poll_config.unwrap_or(TypedStore::attach(&deps.storage).load(DEFAULT_POLL_CONFIG_KEY)?),
             poll_choices,
+            pool_viewing_key,
         ),
         PollFactoryHandleMsg::UpdateVotingPower { voter, new_power } => {
             update_voting_power(deps, env, voter, new_power, active_pools)
         }
-        PollFactoryHandleMsg::UpdatePollCode {
-            new_id,
-            new_code_hash,
-        } => update_poll_contract(deps, env, new_id, new_code_hash),
         PollFactoryHandleMsg::UpdateDefaultPollConfig {
             duration,
             quorum,
@@ -82,6 +82,17 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
             end_time,
         } => register_for_updates(deps, env, Challenge(challenge), end_time),
         PollFactoryHandleMsg::ChangeAdmin { new_admin } => change_admin(deps, env, new_admin),
+        PollFactoryHandleMsg::UpdateConfig {
+            new_poll_code,
+            new_staking_pool,
+            new_min_stake_amount,
+        } => update_config(
+            deps,
+            env,
+            new_poll_code,
+            new_staking_pool,
+            new_min_stake_amount,
+        ),
     }
 }
 
@@ -106,10 +117,26 @@ fn new_poll<S: Storage, A: Api, Q: Querier>(
     poll_metadata: PollMetadata,
     poll_config: PollConfig,
     poll_choices: Vec<String>,
+    pool_vk: String,
 ) -> StdResult<HandleResponse> {
-    // TODO add a minimum staked SEFI check (configurable param)
-
     let mut config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
+
+    // Verify minimum staked amount
+    let voting_power = snip20::balance_query(
+        &deps.querier,
+        env.message.sender.clone(),
+        pool_vk,
+        256,
+        config.staking_pool.contract_hash.clone(),
+        config.staking_pool.address.clone(),
+    )?;
+    if voting_power.amount.u128() < config.min_staked {
+        StdError::generic_err(format!(
+            "insufficient staked amount. Minimum staked SEFI to create a poll is {}",
+            config.min_staked / 1_000_000
+        ));
+    }
+
     let key = Challenge::new(&env, &config.prng_seed);
     TypedStoreMut::attach(&mut deps.storage).store(CURRENT_CHALLENGE_KEY, &key)?;
 
@@ -209,29 +236,6 @@ fn update_voting_power<S: Storage, A: Api, Q: Querier>(
     })
 }
 
-fn update_poll_contract<S: Storage, A: Api, Q: Querier>(
-    deps: &mut Extern<S, A, Q>,
-    env: Env,
-    new_id: u64,
-    new_code_hash: String,
-) -> StdResult<HandleResponse> {
-    enforce_admin(deps, &env)?;
-
-    let mut config_store = TypedStoreMut::<Config, S>::attach(&mut deps.storage);
-    let mut config = config_store.load(CONFIG_KEY)?;
-    config.poll_contract = PollContract {
-        code_id: new_id,
-        code_hash: new_code_hash,
-    };
-    config_store.store(CONFIG_KEY, &config)?;
-
-    Ok(HandleResponse {
-        messages: vec![],
-        log: vec![],
-        data: Some(to_binary(&ResponseStatus::Success)?),
-    })
-}
-
 fn update_default_poll_config<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
@@ -273,6 +277,39 @@ fn change_admin<S: Storage, A: Api, Q: Querier>(
     enforce_admin(deps, &env)?;
 
     TypedStoreMut::attach(&mut deps.storage).store(ADMIN_KEY, &address)?;
+
+    Ok(HandleResponse {
+        messages: vec![],
+        log: vec![],
+        data: Some(to_binary(&ResponseStatus::Success)?),
+    })
+}
+
+fn update_config<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    new_poll_code: Option<PollContract>,
+    new_staking_pool: Option<SecretContract>,
+    new_min_stake_amount: Option<Uint128>,
+) -> StdResult<HandleResponse> {
+    enforce_admin(deps, &env)?;
+
+    let mut config_store = TypedStoreMut::<Config, S>::attach(&mut deps.storage);
+    let mut config = config_store.load(CONFIG_KEY)?;
+
+    if let Some(new_poll) = new_poll_code {
+        config.poll_contract = new_poll;
+    }
+
+    if let Some(new_pool) = new_staking_pool {
+        config.staking_pool = new_pool;
+    }
+
+    if let Some(new_amount) = new_min_stake_amount {
+        config.min_staked = new_amount.u128();
+    }
+
+    config_store.store(CONFIG_KEY, &config)?;
 
     Ok(HandleResponse {
         messages: vec![],

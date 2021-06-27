@@ -1,7 +1,7 @@
-use crate::state::{ActivePoll, PollContract};
+use crate::state::ActivePoll;
 use cosmwasm_std::{Binary, HumanAddr, Uint128};
 use schemars::JsonSchema;
-use scrt_finance::secret_vote_types::{PollConfig, PollMetadata};
+use scrt_finance::secret_vote_types::{PollConfig, PollContract, PollMetadata};
 use scrt_finance::types::SecretContract;
 use serde::{Deserialize, Serialize};
 
@@ -11,6 +11,7 @@ pub struct InitMsg {
     pub poll_contract: PollContract,
     pub staking_pool: SecretContract,
     pub default_poll_config: PollConfig,
+    pub min_staked: Uint128,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
