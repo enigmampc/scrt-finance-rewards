@@ -6,6 +6,4 @@ pub const SUBSCRIBERS_KEY: &[u8] = b"subscribers";
 
 pub const RESPONSE_BLOCK_SIZE: usize = 256;
 
-// TODO: get those as an input for specific coins, as some coins might require different scales than others
-// pub const INC_TOKEN_SCALE: u128 = 1; // LP Tokens and Gov Token is at the same scale
-pub const REWARD_SCALE: u128 = 1_000_000_000_000; // 10 ^ 12
+pub const REWARD_SCALE: u128 = 1_000_000_000_000_000_000; // 10 ^ 18
