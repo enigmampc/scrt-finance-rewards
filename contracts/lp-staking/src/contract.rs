@@ -148,6 +148,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
         LPStakingQueryMsg::RewardToken {} => query_reward_token(deps),
         LPStakingQueryMsg::IncentivizedToken {} => query_incentivized_token(deps),
         LPStakingQueryMsg::TokenInfo {} => query_token_info(deps),
+        LPStakingQueryMsg::TotalLocked {} => query_total_locked(deps),
         LPStakingQueryMsg::Subscribers {} => query_subscribers(deps),
         _ => authenticated_queries(deps, msg),
     };
@@ -672,6 +673,15 @@ fn query_token_info<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> S
         symbol: token_info.symbol,
         decimals: 1,
         total_supply: None,
+    })
+}
+
+fn query_total_locked<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<Binary> {
+    // let subs: Vec<SecretContract> = TypedStore::attach(&deps.storage).load(SUBSCRIBERS_KEY)?;
+    let reward_pool: RewardPool = TypedStore::attach(&deps.storage).load(REWARD_POOL_KEY)?;
+
+    to_binary(&LPStakingQueryAnswer::TotalLocked {
+        amount: Uint128(reward_pool.inc_token_supply),
     })
 }
 

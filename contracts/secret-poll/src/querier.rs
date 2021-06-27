@@ -1,12 +1,12 @@
 use crate::state::{CONFIG_KEY, STAKING_POOL_KEY};
 use cosmwasm_std::{
     to_binary, Api, Extern, HumanAddr, Querier, QueryRequest, StdError, StdResult, Storage,
-    WasmQuery,
+    Uint128, WasmQuery,
 };
+use scrt_finance::lp_staking_msg::{LPStakingQueryAnswer, LPStakingQueryMsg};
 use scrt_finance::types::SecretContract;
 use secret_toolkit::storage::TypedStore;
 
-// TODO: finish implementing when staking pool contract is done
 pub fn query_staking_balance<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
 ) -> StdResult<u128> {
@@ -15,6 +15,13 @@ pub fn query_staking_balance<S: Storage, A: Api, Q: Querier>(
     let response = deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
         callback_code_hash: staking_pool.contract_hash,
         contract_addr: staking_pool.address,
-        msg: unimplemented!(),
+        msg: to_binary(&LPStakingQueryMsg::TotalLocked {})?,
     }))?;
+
+    match response {
+        LPStakingQueryAnswer::TotalLocked { amount } => Ok(amount.u128()),
+        _ => Err(StdError::generic_err(
+            "something is wrong with the lp staking contract..",
+        )),
+    }
 }

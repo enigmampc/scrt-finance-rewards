@@ -108,6 +108,7 @@ pub enum LPStakingQueryMsg {
     ContractStatus {},
     RewardToken {},
     IncentivizedToken {},
+    TotalLocked {},
     Subscribers {},
 
     // Authenticated
@@ -155,6 +156,9 @@ pub enum LPStakingQueryAnswer {
     },
     IncentivizedToken {
         token: SecretContract,
+    },
+    TotalLocked {
+        amount: Uint128,
     },
     Subscribers {
         contracts: Vec<SecretContract>,

@@ -32,9 +32,6 @@ pub fn store_vote<S: Storage, A: Api, Q: Querier>(
     voting_power: u128,
 ) -> StdResult<()> {
     TypedStoreMut::attach(&mut deps.storage).store(
-        // TODO: We might want to iterate over every voter at some point (or e.g. return a list of voters).
-        // TODO: In that case we'd want to store it differently
-        // TODO: As an alternative, someone can just look for addresses which interacted with this contract
         voter.0.as_bytes(),
         &Vote {
             choice,
