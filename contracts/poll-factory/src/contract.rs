@@ -52,8 +52,6 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     env: Env,
     msg: PollFactoryHandleMsg,
 ) -> StdResult<HandleResponse> {
-    let active_pools = remove_inactive_polls(deps, &env)?; // TODO probably can call this only on `UpdateVotingPower`, leaving it here for now
-
     match msg {
         PollFactoryHandleMsg::NewPoll {
             poll_metadata,
@@ -69,7 +67,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
             pool_viewing_key,
         ),
         PollFactoryHandleMsg::UpdateVotingPower { voter, new_power } => {
-            update_voting_power(deps, env, voter, new_power, active_pools)
+            update_voting_power(deps, env, voter, new_power)
         }
         PollFactoryHandleMsg::UpdateDefaultPollConfig {
             duration,
@@ -211,7 +209,6 @@ fn update_voting_power<S: Storage, A: Api, Q: Querier>(
     env: Env,
     voter: HumanAddr,
     new_power: Uint128,
-    active_polls: Vec<ActivePoll>,
 ) -> StdResult<HandleResponse> {
     let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
     if env.message.sender != config.staking_pool.address {
@@ -224,6 +221,7 @@ fn update_voting_power<S: Storage, A: Api, Q: Querier>(
     })?; // This API should be kept if a new poll contract is introduced
 
     let mut messages = vec![];
+    let active_polls = remove_inactive_polls(deps, &env)?;
     for poll in active_polls {
         messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: poll.address,
