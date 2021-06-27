@@ -26,13 +26,8 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     let owner = env.message.sender;
     TypedStoreMut::attach(&mut deps.storage).store(ADMIN_KEY, &owner)?;
 
-    let default_poll_config = PollConfig {
-        duration: 1209600, // 2 weeks
-        quorum: 34,        // X/100% (percentage)
-        min_threshold: 0,
-    };
     TypedStoreMut::attach(&mut deps.storage)
-        .store(DEFAULT_POLL_CONFIG_KEY, &default_poll_config)?;
+        .store(DEFAULT_POLL_CONFIG_KEY, &msg.default_poll_config)?;
 
     let prng_seed_hashed = sha_256(&msg.prng_seed.0);
     TypedStoreMut::attach(&mut deps.storage).store(
@@ -132,7 +127,7 @@ fn new_poll<S: Storage, A: Api, Q: Querier>(
             })?,
         }),
     };
-    let label: String = format!("secret-poll-{}", config.id_counter);
+    let label: String = format!("secret-poll-{}", config.id_counter); // TODO add random chars
 
     config.id_counter += 1;
     TypedStoreMut::attach(&mut deps.storage).store(CONFIG_KEY, &config)?;
