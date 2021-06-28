@@ -58,6 +58,9 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
 
     if let Some(subs) = msg.subscribers {
         TypedStoreMut::attach(&mut deps.storage).store(SUBSCRIBERS_KEY, &subs)?;
+    } else {
+        TypedStoreMut::attach(&mut deps.storage)
+            .store(SUBSCRIBERS_KEY, &Vec::<SecretContract>::new())?;
     }
 
     // Register sSCRT and incentivized token, set vks
