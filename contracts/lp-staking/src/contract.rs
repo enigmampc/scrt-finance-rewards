@@ -553,7 +553,7 @@ fn add_subscribers<S: Storage, A: Api, Q: Querier>(
     new_subs: Vec<SecretContract>,
 ) -> StdResult<HandleResponse> {
     let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
-    enforce_admin(config.clone(), env)?;
+    enforce_admin(config, env)?;
 
     let mut subs_store = TypedStoreMut::attach(&mut deps.storage);
     let mut subs: Vec<SecretContract> = subs_store.load(SUBSCRIBERS_KEY)?;
@@ -575,7 +575,7 @@ fn remove_subscribers<S: Storage, A: Api, Q: Querier>(
     subs_to_remove: Vec<HumanAddr>,
 ) -> StdResult<HandleResponse> {
     let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
-    enforce_admin(config.clone(), env)?;
+    enforce_admin(config, env)?;
 
     let mut subs_store = TypedStoreMut::attach(&mut deps.storage);
     let mut subs: Vec<SecretContract> = subs_store.load(SUBSCRIBERS_KEY)?;
@@ -712,7 +712,7 @@ fn update_rewards<S: Storage, A: Api, Q: Querier>(
     let mut reward_pool: RewardPool = rewards_store.load(REWARD_POOL_KEY)?;
 
     // If there's no new allocation - there is nothing to update because the state of the pool stays the same
-    if newly_allocated <= 0 {
+    if newly_allocated == 0 {
         return Ok(reward_pool);
     }
 

@@ -137,7 +137,7 @@ fn new_poll<S: Storage, A: Api, Q: Querier>(
     TypedStoreMut::attach(&mut deps.storage).store(CURRENT_CHALLENGE_KEY, &key)?;
 
     let init_msg = PollInitMsg {
-        metadata: poll_metadata.clone(),
+        metadata: poll_metadata,
         config: poll_config.clone(),
         choices: poll_choices,
         staking_pool: config.staking_pool.clone(),
@@ -145,7 +145,7 @@ fn new_poll<S: Storage, A: Api, Q: Querier>(
             contract_addr: env.contract.address,
             code_hash: env.contract_code_hash,
             msg: to_binary(&RegisterForUpdates {
-                challenge: key.clone().to_string(),
+                challenge: key.to_string(),
                 end_time: env.block.time + poll_config.duration, // If this fails, we have bigger problems than this :)
             })?,
         }),

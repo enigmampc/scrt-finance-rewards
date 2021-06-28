@@ -57,7 +57,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
         },
     )?;
 
-    TypedStoreMut::attach(&mut deps.storage).store(NUM_OF_VOTERS_KEY, &(0 as u64))?;
+    TypedStoreMut::attach(&mut deps.storage).store(NUM_OF_VOTERS_KEY, &(0_u64))?;
 
     let mut messages = vec![];
     if let Some(init_hook) = msg.init_hook {
