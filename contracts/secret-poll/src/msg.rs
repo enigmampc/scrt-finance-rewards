@@ -1,6 +1,7 @@
 use crate::state::StoredPollConfig;
 use cosmwasm_std::{HumanAddr, Uint128};
 use schemars::JsonSchema;
+use scrt_finance::secret_vote_types::PollMetadata;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -16,9 +17,10 @@ pub struct FinalizeAnswer {
 pub enum QueryMsg {
     // Public
     Choices {},
+    VoteInfo {},
     HasVoted { voter: HumanAddr },
     Tally {},
-    VoteInfo {},
+    VoteConfig {},
     NumberOfVoters {},
 
     // Authenticated
@@ -31,6 +33,9 @@ pub enum QueryAnswer {
     Choices {
         choices: Vec<String>,
     },
+    VoteInfo {
+        info: PollMetadata,
+    },
     HasVoted {
         has_voted: bool,
     },
@@ -38,8 +43,8 @@ pub enum QueryAnswer {
         choices: Vec<String>,
         tally: Vec<u128>,
     },
-    VoteInfo {
-        vote_info: StoredPollConfig,
+    VoteConfig {
+        vote_config: StoredPollConfig,
     },
     Vote {
         choice: u8,

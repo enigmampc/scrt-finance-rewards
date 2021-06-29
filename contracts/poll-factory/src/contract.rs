@@ -137,7 +137,11 @@ fn new_poll<S: Storage, A: Api, Q: Querier>(
     TypedStoreMut::attach(&mut deps.storage).store(CURRENT_CHALLENGE_KEY, &key)?;
 
     let init_msg = PollInitMsg {
-        metadata: poll_metadata,
+        metadata: PollMetadata {
+            title: poll_metadata.title,
+            description: poll_metadata.description,
+            author: Some(env.message.sender),
+        },
         config: poll_config.clone(),
         choices: poll_choices,
         staking_pool: config.staking_pool.clone(),

@@ -8,7 +8,7 @@ use cosmwasm_std::{
     log, to_binary, Api, Binary, CosmosMsg, Env, Extern, HandleResponse, HumanAddr, InitResponse,
     Querier, StdError, StdResult, Storage, Uint128, WasmMsg,
 };
-use scrt_finance::secret_vote_types::{PollHandleMsg, PollInitMsg};
+use scrt_finance::secret_vote_types::{PollHandleMsg, PollInitMsg, PollMetadata};
 use scrt_finance::types::SecretContract;
 use secret_toolkit::snip20;
 use secret_toolkit::snip20::balance_query;
@@ -21,7 +21,6 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
 ) -> StdResult<InitResponse> {
     let owner = env.message.sender;
     TypedStoreMut::attach(&mut deps.storage).store(OWNER_KEY, &owner)?; // This is in fact the factory contract
-    TypedStoreMut::attach(&mut deps.storage).store(METADATA_KEY, &msg.metadata)?;
     TypedStoreMut::attach(&mut deps.storage).store(STAKING_POOL_KEY, &msg.staking_pool)?;
 
     if msg.choices.len() < 2 {
@@ -29,17 +28,19 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
             "you have to provide at least two choices",
         ));
     }
+
     // Sanity checks to prevent starting a new poll by mistake
     if msg.metadata.title.len() < 2 {
         return Err(StdError::generic_err(
             "poll title must be at least 2 characters long",
         ));
     }
-    if msg.metadata.description.len() < 3 {
+    if msg.metadata.description.len() < 10 {
         return Err(StdError::generic_err(
-            "poll description must be at least 2 characters long",
+            "poll description must be at least 10 characters long",
         ));
     }
+    TypedStoreMut::attach(&mut deps.storage).store(METADATA_KEY, &msg.metadata)?;
 
     let tally: Vec<u128> = vec![0; msg.choices.len()];
     TypedStoreMut::attach(&mut deps.storage).store(TALLY_KEY, &tally)?;
@@ -101,8 +102,9 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
         QueryMsg::HasVoted { voter } => query_has_voted(deps, voter),
         QueryMsg::Tally {} => query_tally(deps),
         QueryMsg::Vote { voter, key } => query_vote(deps, voter, key),
-        QueryMsg::VoteInfo {} => query_vote_info(deps),
+        QueryMsg::VoteConfig {} => query_vote_config(deps),
         QueryMsg::NumberOfVoters {} => query_num_of_voters(deps),
+        QueryMsg::VoteInfo {} => query_vote_info(deps),
     }
 }
 
@@ -229,8 +231,17 @@ pub fn query_choices<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> 
 pub fn query_vote_info<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
 ) -> StdResult<Binary> {
+    let info: PollMetadata = TypedStore::attach(&deps.storage).load(METADATA_KEY)?;
+    Ok(to_binary(&QueryAnswer::VoteInfo { info })?)
+}
+
+pub fn query_vote_config<S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>,
+) -> StdResult<Binary> {
     let config: StoredPollConfig = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
-    Ok(to_binary(&QueryAnswer::VoteInfo { vote_info: config })?)
+    Ok(to_binary(&QueryAnswer::VoteConfig {
+        vote_config: config,
+    })?)
 }
 
 pub fn query_has_voted<S: Storage, A: Api, Q: Querier>(

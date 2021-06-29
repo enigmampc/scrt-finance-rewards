@@ -20,7 +20,7 @@ pub struct PollConfig {
 pub struct PollMetadata {
     pub title: String,
     pub description: String,
-    pub author: HumanAddr,
+    pub author: Option<HumanAddr>,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
