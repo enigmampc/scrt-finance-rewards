@@ -11,8 +11,8 @@ compile-optimized: _compile-optimized
 _compile-optimized:
 	for path in $$(ls contracts); do \
 		make -C "contracts/$$path" compile-optimized; \
-		mv -f "contracts/$$path/contract.wasm" "$$(basename $${path}).wasm.gz"; \
 	done
+	cp ./target/wasm32-unknown-unknown/release/*.wasm ./build/
 
 .PHONY: compile-w-debug-print _compile-w-debug-print
 compile-w-debug-print: _compile-w-debug-print
