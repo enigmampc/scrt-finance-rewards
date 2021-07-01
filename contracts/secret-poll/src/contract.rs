@@ -256,10 +256,11 @@ pub fn query_tally<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> St
     require_vote_ended_and_valid(deps)?; // Hopefully this provide a good enough anonymity set to resist offline attacks
 
     let tally: Vec<u128> = TypedStore::attach(&deps.storage).load(TALLY_KEY)?;
+    let formatted_tally: Vec<Uint128> = tally.iter().map(|c| Uint128(*c)).collect();
     let config: StoredPollConfig = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
     Ok(to_binary(&QueryAnswer::Tally {
         choices: config.choices,
-        tally,
+        tally: formatted_tally,
     })?)
 }
 
@@ -365,9 +366,163 @@ fn require_vote_ended_and_valid<S: Storage, A: Api, Q: Querier>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cosmwasm_std::testing::{mock_dependencies, mock_env};
-    use cosmwasm_std::{coins, from_binary, StdError};
+    use cosmwasm_std::testing::{
+        mock_dependencies, MockApi, MockQuerier, MockStorage, MOCK_CONTRACT_ADDR,
+    };
+    use cosmwasm_std::{coins, from_binary, BlockInfo, Coin, ContractInfo, MessageInfo, StdError};
+    use scrt_finance::secret_vote_types::PollConfig;
+
+    pub fn mock_env<U: Into<HumanAddr>>(sender: U, sent: &[Coin], block: u64, time: u64) -> Env {
+        Env {
+            block: BlockInfo {
+                height: block,
+                time,
+                chain_id: "cosmos-testnet-14002".to_string(),
+            },
+            message: MessageInfo {
+                sender: sender.into(),
+                sent_funds: sent.to_vec(),
+            },
+            contract: ContractInfo {
+                address: HumanAddr::from(MOCK_CONTRACT_ADDR),
+            },
+            contract_key: Some("".to_string()),
+            contract_code_hash: "".to_string(),
+        }
+    }
+
+    fn init_helper() -> (
+        StdResult<InitResponse>,
+        Extern<MockStorage, MockApi, MockQuerier>,
+    ) {
+        let mut deps = mock_dependencies(20, &[]);
+        let env = mock_env("factory", &[], 0, 0);
+
+        let init_msg = PollInitMsg {
+            metadata: PollMetadata {
+                title: "test vote".to_string(),
+                description: "hey hey this is a test vote".to_string(),
+                author: Some(HumanAddr("proposer".to_string())),
+            },
+            config: PollConfig {
+                duration: 1000,
+                quorum: 33,
+                min_threshold: 0,
+            },
+            choices: vec!["Yes".into(), "No".into()],
+            staking_pool: SecretContract {
+                address: HumanAddr("staking pool".to_string()),
+                contract_hash: "".to_string(),
+            },
+            init_hook: None,
+        };
+
+        (init(&mut deps, env, init_msg), deps)
+    }
 
     #[test]
-    fn test() {}
+    fn test_vote_info() {
+        let mut deps = mock_dependencies(20, &[]);
+        let env = mock_env("factory", &[], 0, 0);
+        let init_msg = PollInitMsg {
+            metadata: PollMetadata {
+                title: "test_vote_info".to_string(),
+                description: "test_vote_info".to_string(),
+                author: Some(HumanAddr("proposer".to_string())),
+            },
+            config: PollConfig {
+                duration: 1000,
+                quorum: 33,
+                min_threshold: 0,
+            },
+            choices: vec!["Yes".into(), "No".into()],
+            staking_pool: SecretContract {
+                address: HumanAddr("staking pool".to_string()),
+                contract_hash: "".to_string(),
+            },
+            init_hook: None,
+        };
+        init(&mut deps, env, init_msg).unwrap();
+
+        let res = query_vote_info(&deps).unwrap();
+        assert_eq!(
+            res,
+            to_binary(&QueryAnswer::VoteInfo {
+                info: PollMetadata {
+                    title: "test_vote_info".to_string(),
+                    description: "test_vote_info".to_string(),
+
+                    author: Some(HumanAddr("proposer".to_string())),
+                }
+            })
+            .unwrap()
+        )
+    }
+
+    #[test]
+    fn test_tally() {
+        let (init_result, mut deps) = init_helper();
+        assert!(init_result.is_ok());
+
+        update_vote(
+            &mut deps,
+            &HumanAddr("user".into()),
+            None,
+            Vote {
+                choice: 0,
+                voting_power: 100,
+            },
+        )
+        .unwrap();
+
+        let err = query_tally(&deps).unwrap_err();
+        assert_eq!(err, StdError::generic_err("vote hasn't ended yet"));
+
+        // Finalize
+        let mut config: StoredPollConfig = TypedStoreMut::attach(&mut deps.storage)
+            .load(CONFIG_KEY)
+            .unwrap();
+        config.valid = true;
+        config.ended = true;
+        TypedStoreMut::attach(&mut deps.storage)
+            .store(CONFIG_KEY, &config)
+            .unwrap();
+
+        let res = query_tally(&deps).unwrap();
+        assert_eq!(
+            res,
+            to_binary(&QueryAnswer::Tally {
+                choices: vec!["Yes".into(), "No".into()],
+                tally: vec![Uint128(100), Uint128(0)],
+            })
+            .unwrap()
+        )
+    }
+
+    #[test]
+    fn test_tally_before_ended() {}
+
+    #[test]
+    fn test_tally_below_quorum() {}
+
+    #[test]
+    fn test_minimum_deposit() {}
+
+    #[test]
+    fn test_has_voted() {}
+
+    #[test]
+    fn test_num_of_voters() {}
+
+    #[test]
+    fn test_query_vote() {}
+
+    #[test]
+    fn test_update_voting_power() {}
+
+    #[test]
+    fn test_vote_after_ended() {}
+
+    #[test]
+    fn test_finalize_before_ended() {}
 }

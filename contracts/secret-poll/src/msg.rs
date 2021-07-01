@@ -41,7 +41,7 @@ pub enum QueryAnswer {
     },
     Tally {
         choices: Vec<String>,
-        tally: Vec<u128>,
+        tally: Vec<Uint128>,
     },
     VoteConfig {
         vote_config: StoredPollConfig,
