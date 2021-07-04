@@ -40,6 +40,11 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
             "poll description must be at least 10 characters long",
         ));
     }
+    if msg.metadata.author_alias.len() < 3 {
+        return Err(StdError::generic_err(
+            "poll author alias must be at least 3 characters long",
+        ));
+    }
     TypedStoreMut::attach(&mut deps.storage).store(METADATA_KEY, &msg.metadata)?;
 
     let tally: Vec<u128> = vec![0; msg.choices.len()];
@@ -402,7 +407,8 @@ mod tests {
             metadata: PollMetadata {
                 title: "test vote".to_string(),
                 description: "hey hey this is a test vote".to_string(),
-                author: Some(HumanAddr("proposer".to_string())),
+                author_addr: Some(HumanAddr("proposer".to_string())),
+                author_alias: "proposer".into(),
             },
             config: PollConfig {
                 duration: 1000,
@@ -428,7 +434,8 @@ mod tests {
             metadata: PollMetadata {
                 title: "test_vote_info".to_string(),
                 description: "test_vote_info".to_string(),
-                author: Some(HumanAddr("proposer".to_string())),
+                author_addr: Some(HumanAddr("proposer".to_string())),
+                author_alias: "proposer".into(),
             },
             config: PollConfig {
                 duration: 1000,
@@ -451,8 +458,8 @@ mod tests {
                 info: PollMetadata {
                     title: "test_vote_info".to_string(),
                     description: "test_vote_info".to_string(),
-
-                    author: Some(HumanAddr("proposer".to_string())),
+                    author_addr: Some(HumanAddr("proposer".to_string())),
+                    author_alias: "proposer".into(),
                 }
             })
             .unwrap()

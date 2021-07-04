@@ -140,7 +140,8 @@ fn new_poll<S: Storage, A: Api, Q: Querier>(
         metadata: PollMetadata {
             title: poll_metadata.title,
             description: poll_metadata.description,
-            author: Some(env.message.sender),
+            author_addr: Some(env.message.sender),
+            author_alias: poll_metadata.author_alias,
         },
         config: poll_config.clone(),
         choices: poll_choices,
