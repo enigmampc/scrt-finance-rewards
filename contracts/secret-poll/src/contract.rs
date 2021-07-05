@@ -107,7 +107,6 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
         QueryMsg::HasVoted { voter } => query_has_voted(deps, voter),
         QueryMsg::Tally {} => query_tally(deps),
         QueryMsg::Vote { voter, key } => query_vote(deps, voter, key),
-        QueryMsg::VoteConfig {} => query_vote_config(deps),
         QueryMsg::NumberOfVoters {} => query_num_of_voters(deps),
         QueryMsg::VoteInfo {} => query_vote_info(deps),
     }
@@ -236,17 +235,9 @@ pub fn query_choices<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> 
 pub fn query_vote_info<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
 ) -> StdResult<Binary> {
-    let info: PollMetadata = TypedStore::attach(&deps.storage).load(METADATA_KEY)?;
-    Ok(to_binary(&QueryAnswer::VoteInfo { info })?)
-}
-
-pub fn query_vote_config<S: Storage, A: Api, Q: Querier>(
-    deps: &Extern<S, A, Q>,
-) -> StdResult<Binary> {
+    let metadata: PollMetadata = TypedStore::attach(&deps.storage).load(METADATA_KEY)?;
     let config: StoredPollConfig = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
-    Ok(to_binary(&QueryAnswer::VoteConfig {
-        vote_config: config,
-    })?)
+    Ok(to_binary(&QueryAnswer::VoteInfo { metadata, config })?)
 }
 
 pub fn query_has_voted<S: Storage, A: Api, Q: Querier>(
@@ -455,11 +446,19 @@ mod tests {
         assert_eq!(
             res,
             to_binary(&QueryAnswer::VoteInfo {
-                info: PollMetadata {
+                metadata: PollMetadata {
                     title: "test_vote_info".to_string(),
                     description: "test_vote_info".to_string(),
                     author_addr: Some(HumanAddr("proposer".to_string())),
                     author_alias: "proposer".into(),
+                },
+                config: StoredPollConfig {
+                    end_timestamp: 1000,
+                    quorum: 33,
+                    min_threshold: 0,
+                    choices: vec!["Yes".into(), "No".into()],
+                    ended: false,
+                    valid: false
                 }
             })
             .unwrap()

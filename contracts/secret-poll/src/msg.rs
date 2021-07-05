@@ -20,7 +20,6 @@ pub enum QueryMsg {
     VoteInfo {},
     HasVoted { voter: HumanAddr },
     Tally {},
-    VoteConfig {},
     NumberOfVoters {},
 
     // Authenticated
@@ -34,7 +33,8 @@ pub enum QueryAnswer {
         choices: Vec<String>,
     },
     VoteInfo {
-        info: PollMetadata,
+        metadata: PollMetadata,
+        config: StoredPollConfig,
     },
     HasVoted {
         has_voted: bool,
@@ -42,9 +42,6 @@ pub enum QueryAnswer {
     Tally {
         choices: Vec<String>,
         tally: Vec<Uint128>,
-    },
-    VoteConfig {
-        vote_config: StoredPollConfig,
     },
     Vote {
         choice: u8,
