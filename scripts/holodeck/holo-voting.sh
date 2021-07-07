@@ -13,7 +13,7 @@ export DAY=$((HOUR * 24))
 export WEEK=$((DAY * 7))
 
 export wasm_path=build
-export revision="5"
+export revision="7"
 
 export deployer_name=test
 export deployer_address=$(secretcli keys show -a $deployer_name)
@@ -29,7 +29,7 @@ export sefi_staking_addr="secret1c6qft4w76nreh7whn736k58chu8qy9u57rmp89"
 export sefi_staking_hash="8fcc4c975a67178b8b15b903f99604c2a38be118bcb35751ffde9183a2c6a193"
 export sefi_staking_vk="api_key_vQGLKACbvr3DEUdffavJFkhbr1LF6lH9yEmhxkeRXQo="
 
-export vote_duration=$((DAY * 2))
+export vote_duration=$((HOUR))
 export quorum=33
 export min_staked="1000000" # 1 SEFI
 
@@ -86,7 +86,7 @@ echo "Vote Factory address: '$vote_factory_addr', '$vote_factory_code_hash'"
 
 echo "Adding vote factory as a subscriber.."
 export TX_HASH=$(
-  secretcli tx compute execute $sefi_staking_addr '{"add_subs":{"contracts":[{"address":"'"$vote_factory_addr"'","contract_hash":"'"$vote_factory_code_hash"'"}]}}' --from $deployer_name --gas 1500000 -b block -y |
+  secretcli tx compute execute $sefi_staking_addr '{"add_subs":{"contracts":[{"address":"'"$vote_factory_addr"'","contract_hash":'"$vote_factory_code_hash"'}]}}' --from $deployer_name --gas 1500000 -b block -y |
   jq -r .txhash
 )
 wait_for_tx "$TX_HASH" "Waiting for tx to finish on-chain..."
@@ -95,7 +95,7 @@ echo $resp
 
 echo "Deploying a vote.."
 export TX_HASH=$(
-  secretcli tx compute execute $vote_factory_addr '{"new_poll":{"poll_metadata":{"title":"demo vote", "description":"this is a demo vote woohoooooooo!!!", "author":"'"$deployer_address"'"},"poll_choices":["Yes","No"],"pool_viewing_key":"'"$sefi_staking_vk"'"}}' --from $deployer_name --gas 1500000 -b block -y |
+  secretcli tx compute execute $vote_factory_addr '{"new_poll":{"poll_metadata":{"title":"demo vote", "description":"this is a demo vote woohoooooooo!!!", "vote_type":"SEFI Community Spending", "author_addr":"'"$deployer_address"'", "author_alias":"you know who it is"},"poll_choices":["Yes","No"],"pool_viewing_key":"'"$sefi_staking_vk"'"}}' --from $deployer_name --gas 1500000 -b block -y |
   jq -r .txhash
 )
 wait_for_tx "$TX_HASH" "Waiting for tx to finish on-chain..."

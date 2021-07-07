@@ -20,6 +20,7 @@ pub struct PollConfig {
 pub struct PollMetadata {
     pub title: String,
     pub description: String,
+    pub vote_type: String,
     pub author_addr: Option<HumanAddr>,
     pub author_alias: String,
 }
