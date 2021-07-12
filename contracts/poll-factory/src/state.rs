@@ -1,6 +1,6 @@
 use cosmwasm_std::HumanAddr;
 use schemars::JsonSchema;
-use scrt_finance::secret_vote_types::PollContract;
+use scrt_finance::secret_vote_types::{PollContract, RevealCommittee};
 use scrt_finance::types::SecretContract;
 use serde::{Deserialize, Serialize};
 
@@ -17,6 +17,7 @@ pub struct Config {
     pub id_counter: u128,
     pub prng_seed: [u8; 32],
     pub min_staked: u128,
+    pub reveal_com: RevealCommittee,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]

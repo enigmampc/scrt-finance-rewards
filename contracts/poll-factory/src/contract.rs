@@ -11,7 +11,7 @@ use cosmwasm_std::{
 use scrt_finance::secret_vote_types::PollFactoryHandleMsg::RegisterForUpdates;
 use scrt_finance::secret_vote_types::{
     InitHook, PollConfig, PollContract, PollFactoryHandleMsg, PollHandleMsg, PollInitMsg,
-    PollMetadata,
+    PollMetadata, RevealCommittee,
 };
 use scrt_finance::types::SecretContract;
 use secret_toolkit::snip20;
@@ -40,6 +40,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
             id_counter: 0,
             prng_seed: prng_seed_hashed,
             min_staked: msg.min_staked.u128(),
+            reveal_com: msg.reveal_com,
         },
     )?;
 
@@ -82,12 +83,14 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
             new_poll_code,
             new_staking_pool,
             new_min_stake_amount,
+            new_reveal_com,
         } => update_config(
             deps,
             env,
             new_poll_code,
             new_staking_pool,
             new_min_stake_amount,
+            new_reveal_com,
         ),
     }
 }
@@ -102,6 +105,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
         QueryMsg::StakingPool {} => query_staking_pool(deps),
         QueryMsg::PollCode {} => query_poll_code(deps),
         QueryMsg::Admin {} => query_admin(deps),
+        QueryMsg::RevealCommittee {} => query_reveal_com(deps),
     }
 }
 
@@ -298,6 +302,7 @@ fn update_config<S: Storage, A: Api, Q: Querier>(
     new_poll_code: Option<PollContract>,
     new_staking_pool: Option<SecretContract>,
     new_min_stake_amount: Option<Uint128>,
+    new_reveal_com: Option<RevealCommittee>,
 ) -> StdResult<HandleResponse> {
     enforce_admin(deps, &env)?;
 
@@ -314,6 +319,10 @@ fn update_config<S: Storage, A: Api, Q: Querier>(
 
     if let Some(new_amount) = new_min_stake_amount {
         config.min_staked = new_amount.u128();
+    }
+
+    if let Some(new_committee) = new_reveal_com {
+        config.reveal_com = new_committee;
     }
 
     config_store.store(CONFIG_KEY, &config)?;
@@ -367,6 +376,14 @@ fn query_admin<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdRes
     let admin: HumanAddr = TypedStore::attach(&deps.storage).load(ADMIN_KEY)?;
 
     Ok(to_binary(&QueryAnswer::Admin { address: admin })?)
+}
+
+fn query_reveal_com<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<Binary> {
+    let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
+
+    Ok(to_binary(&QueryAnswer::RevealCommittee {
+        committee: config.reveal_com,
+    })?)
 }
 
 // Helper functions

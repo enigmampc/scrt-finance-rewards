@@ -25,6 +25,12 @@ pub struct PollMetadata {
     pub author_alias: String,
 }
 
+#[derive(Serialize, Deserialize, JsonSchema, Clone)]
+pub struct RevealCommittee {
+    pub n: u64,
+    pub revealers: Vec<HumanAddr>,
+}
+
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct PollInitMsg {
     pub metadata: PollMetadata,
@@ -64,7 +70,7 @@ pub enum PollFactoryHandleMsg {
         pool_viewing_key: String,
     },
 
-    // Staking contrat callback
+    // Staking contract callback
     UpdateVotingPower {
         voter: HumanAddr,
         new_power: Uint128,
@@ -86,6 +92,7 @@ pub enum PollFactoryHandleMsg {
         new_poll_code: Option<PollContract>,
         new_staking_pool: Option<SecretContract>,
         new_min_stake_amount: Option<Uint128>,
+        new_reveal_com: Option<RevealCommittee>,
     },
     ChangeAdmin {
         new_admin: HumanAddr,
