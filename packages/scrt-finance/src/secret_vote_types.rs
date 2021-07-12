@@ -35,6 +35,7 @@ pub struct RevealCommittee {
 pub struct PollInitMsg {
     pub metadata: PollMetadata,
     pub config: PollConfig,
+    pub reveal_com: RevealCommittee,
     pub choices: Vec<String>,
     pub staking_pool: SecretContract,
     pub init_hook: Option<InitHook>,

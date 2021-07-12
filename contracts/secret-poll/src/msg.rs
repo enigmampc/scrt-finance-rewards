@@ -1,15 +1,16 @@
 use crate::state::StoredPollConfig;
 use cosmwasm_std::{HumanAddr, Uint128};
 use schemars::JsonSchema;
-use scrt_finance::secret_vote_types::PollMetadata;
+use scrt_finance::secret_vote_types::{PollMetadata, RevealCommittee};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct FinalizeAnswer {
-    pub valid: bool,
-    pub choices: Vec<String>,
-    pub tally: Vec<u128>,
+    pub ended: bool,
+    pub valid: Option<bool>,
+    pub choices: Option<Vec<String>>,
+    pub tally: Option<Vec<u128>>,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -21,6 +22,8 @@ pub enum QueryMsg {
     HasVoted { voter: HumanAddr },
     Tally {},
     NumberOfVoters {},
+    RevealCommittee {},
+    Revealed {},
 
     // Authenticated
     Vote { voter: HumanAddr, key: String },
@@ -49,6 +52,14 @@ pub enum QueryAnswer {
     },
     NumberOfVoters {
         count: u64,
+    },
+    RevealCommittee {
+        committee: RevealCommittee,
+    },
+    Revealed {
+        required: u64,
+        num_revealed: u64,
+        revealed: Vec<HumanAddr>,
     },
 }
 

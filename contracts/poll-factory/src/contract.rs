@@ -149,6 +149,7 @@ fn new_poll<S: Storage, A: Api, Q: Querier>(
             author_alias: poll_metadata.author_alias,
         },
         config: poll_config.clone(),
+        reveal_com: config.reveal_com.clone(),
         choices: poll_choices,
         staking_pool: config.staking_pool.clone(),
         init_hook: Some(InitHook {

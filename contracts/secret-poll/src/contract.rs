@@ -1,8 +1,8 @@
 use crate::msg::{FinalizeAnswer, QueryAnswer, QueryMsg, ResponseStatus};
 use crate::querier::query_staking_balance;
 use crate::state::{
-    read_vote, store_vote, StoredPollConfig, Vote, CONFIG_KEY, METADATA_KEY, NUM_OF_VOTERS_KEY,
-    OWNER_KEY, STAKING_POOL_KEY, TALLY_KEY,
+    read_vote, store_vote, StoredPollConfig, StoredRevealConfig, Vote, CONFIG_KEY, METADATA_KEY,
+    NUM_OF_VOTERS_KEY, OWNER_KEY, REVEAL_CONFIG, STAKING_POOL_KEY, TALLY_KEY,
 };
 use cosmwasm_std::{
     log, to_binary, Api, Binary, CosmosMsg, Env, Extern, HandleResponse, HumanAddr, InitResponse,
@@ -64,6 +64,14 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     )?;
 
     TypedStoreMut::attach(&mut deps.storage).store(NUM_OF_VOTERS_KEY, &(0_u64))?;
+    TypedStoreMut::attach(&mut deps.storage).store(
+        REVEAL_CONFIG,
+        &StoredRevealConfig {
+            committee: msg.reveal_com,
+            num_revealed: 0,
+            revealed: vec![],
+        },
+    )?;
 
     let mut messages = vec![];
     if let Some(init_hook) = msg.init_hook {
@@ -109,6 +117,8 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
         QueryMsg::Vote { voter, key } => query_vote(deps, voter, key),
         QueryMsg::NumberOfVoters {} => query_num_of_voters(deps),
         QueryMsg::VoteInfo {} => query_vote_info(deps),
+        QueryMsg::RevealCommittee {} => query_reveal_com(deps),
+        QueryMsg::Revealed {} => query_revealed(deps),
     }
 }
 
@@ -194,6 +204,45 @@ pub fn finalize<S: Storage, A: Api, Q: Querier>(
         return Err(StdError::generic_err("vote has not ended yet"));
     }
 
+    let mut reveal_conf_store = TypedStoreMut::attach(&mut deps.storage);
+    let mut reveal_conf: StoredRevealConfig = reveal_conf_store.load(REVEAL_CONFIG)?;
+    if !reveal_conf
+        .committee
+        .revealers
+        .contains(&env.message.sender)
+    {
+        return Err(StdError::unauthorized());
+    } else if reveal_conf.num_revealed >= reveal_conf.committee.n {
+        let tally = TypedStore::attach(&deps.storage).load(TALLY_KEY)?; // Already revealed
+        return Ok(HandleResponse {
+            messages: vec![],
+            log: vec![],
+            data: Some(to_binary(&FinalizeAnswer {
+                ended: config.ended,
+                valid: Some(config.valid),
+                choices: Some(config.choices),
+                tally: Some(tally),
+            })?),
+        });
+    } else {
+        reveal_conf.revealed.push(env.message.sender);
+        reveal_conf.num_revealed += 1;
+        reveal_conf_store.store(REVEAL_CONFIG, &reveal_conf)?;
+
+        if reveal_conf.num_revealed < reveal_conf.committee.n {
+            return Ok(HandleResponse {
+                messages: vec![],
+                log: vec![],
+                data: Some(to_binary(&FinalizeAnswer {
+                    ended: false,
+                    valid: None,
+                    choices: None,
+                    tally: None,
+                })?),
+            });
+        }
+    }
+
     config.ended = true;
 
     let tally: Vec<u128> = TypedStore::attach(&deps.storage).load(TALLY_KEY)?;
@@ -216,9 +265,10 @@ pub fn finalize<S: Storage, A: Api, Q: Querier>(
         messages: vec![],
         log: vec![],
         data: Some(to_binary(&FinalizeAnswer {
-            valid: config.valid,
-            choices: config.choices,
-            tally,
+            ended: config.ended,
+            valid: Some(config.valid),
+            choices: Some(config.choices),
+            tally: Some(tally),
         })?),
     })
 }
@@ -291,6 +341,29 @@ pub fn query_num_of_voters<S: Storage, A: Api, Q: Querier>(
         count: num_of_voters,
     })?)
 }
+
+pub fn query_reveal_com<S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>,
+) -> StdResult<Binary> {
+    let reveal_config: StoredRevealConfig =
+        TypedStore::attach(&deps.storage).load(REVEAL_CONFIG)?;
+
+    Ok(to_binary(&QueryAnswer::RevealCommittee {
+        committee: reveal_config.committee,
+    })?)
+}
+
+pub fn query_revealed<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<Binary> {
+    let reveal_config: StoredRevealConfig =
+        TypedStore::attach(&deps.storage).load(REVEAL_CONFIG)?;
+
+    Ok(to_binary(&QueryAnswer::Revealed {
+        required: reveal_config.committee.n,
+        num_revealed: reveal_config.num_revealed,
+        revealed: reveal_config.revealed,
+    })?)
+}
+
 // Helper functions
 
 fn update_vote<S: Storage, A: Api, Q: Querier>(
@@ -366,7 +439,7 @@ mod tests {
         mock_dependencies, MockApi, MockQuerier, MockStorage, MOCK_CONTRACT_ADDR,
     };
     use cosmwasm_std::{coins, from_binary, BlockInfo, Coin, ContractInfo, MessageInfo, StdError};
-    use scrt_finance::secret_vote_types::PollConfig;
+    use scrt_finance::secret_vote_types::{PollConfig, RevealCommittee};
 
     pub fn mock_env<U: Into<HumanAddr>>(sender: U, sent: &[Coin], block: u64, time: u64) -> Env {
         Env {
@@ -398,6 +471,7 @@ mod tests {
             metadata: PollMetadata {
                 title: "test vote".to_string(),
                 description: "hey hey this is a test vote".to_string(),
+                vote_type: "cool type".to_string(),
                 author_addr: Some(HumanAddr("proposer".to_string())),
                 author_alias: "proposer".into(),
             },
@@ -405,6 +479,10 @@ mod tests {
                 duration: 1000,
                 quorum: 33,
                 min_threshold: 0,
+            },
+            reveal_com: RevealCommittee {
+                n: 2,
+                revealers: vec![HumanAddr("rev1".into()), HumanAddr("rev2".into())],
             },
             choices: vec!["Yes".into(), "No".into()],
             staking_pool: SecretContract {
@@ -425,6 +503,7 @@ mod tests {
             metadata: PollMetadata {
                 title: "test_vote_info".to_string(),
                 description: "test_vote_info".to_string(),
+                vote_type: "cool type".to_string(),
                 author_addr: Some(HumanAddr("proposer".to_string())),
                 author_alias: "proposer".into(),
             },
@@ -432,6 +511,10 @@ mod tests {
                 duration: 1000,
                 quorum: 33,
                 min_threshold: 0,
+            },
+            reveal_com: RevealCommittee {
+                n: 2,
+                revealers: vec![HumanAddr("rev1".into()), HumanAddr("rev2".into())],
             },
             choices: vec!["Yes".into(), "No".into()],
             staking_pool: SecretContract {
@@ -449,6 +532,7 @@ mod tests {
                 metadata: PollMetadata {
                     title: "test_vote_info".to_string(),
                     description: "test_vote_info".to_string(),
+                    vote_type: "cool type".to_string(),
                     author_addr: Some(HumanAddr("proposer".to_string())),
                     author_alias: "proposer".into(),
                 },
