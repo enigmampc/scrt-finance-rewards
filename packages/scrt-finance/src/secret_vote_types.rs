@@ -47,6 +47,7 @@ pub enum PollHandleMsg {
     Vote {
         choice: u8, // Arbitrary id that is given by the contract
         staking_pool_viewing_key: String,
+        salt: String,
     },
     UpdateVotingPower {
         voter: HumanAddr,

@@ -101,7 +101,8 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         PollHandleMsg::Vote {
             choice,
             staking_pool_viewing_key,
-        } => vote(deps, env, choice, staking_pool_viewing_key),
+            salt,
+        } => vote(deps, env, choice, staking_pool_viewing_key, salt),
         PollHandleMsg::UpdateVotingPower { voter, new_power } => {
             update_voting_power(deps, env, voter, new_power.u128())
         }
@@ -133,6 +134,7 @@ pub fn vote<S: Storage, A: Api, Q: Querier>(
     env: Env,
     choice: u8,
     key: String,
+    salt: String,
 ) -> StdResult<HandleResponse> {
     let mut config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
     require_vote_ongoing(&config)?;
@@ -167,6 +169,7 @@ pub fn vote<S: Storage, A: Api, Q: Querier>(
             choice,
             voting_power,
         },
+        salt,
     );
     config.rolling_hash = new_hash;
     TypedStoreMut::attach(&mut deps.storage).store(CONFIG_KEY, &config)?;
@@ -442,16 +445,18 @@ fn update_vote<S: Storage, A: Api, Q: Querier>(
     Ok(())
 }
 
-fn roll_hash(hash: [u8; 32], voter: &HumanAddr, vote: Vote) -> [u8; 32] {
+fn roll_hash(hash: [u8; 32], voter: &HumanAddr, vote: Vote, salt: String) -> [u8; 32] {
     let mut extended = Vec::with_capacity(
         hash.len()
             + size_of_val(&voter)
             + size_of_val(&vote.choice)
-            + size_of_val(&vote.voting_power),
+            + size_of_val(&vote.voting_power)
+            + size_of_val(&salt),
     );
     extended.extend_from_slice(voter.0.as_bytes());
     extended.extend_from_slice(&vote.choice.to_le_bytes());
     extended.extend_from_slice(&vote.voting_power.to_le_bytes());
+    extended.extend_from_slice(&salt.as_bytes());
 
     Sha256::digest(&extended).into()
 }
