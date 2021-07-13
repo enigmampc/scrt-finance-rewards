@@ -24,6 +24,7 @@ pub enum QueryMsg {
     NumberOfVoters {},
     RevealCommittee {},
     Revealed {},
+    RollingHash {},
 
     // Authenticated
     Vote { voter: HumanAddr, key: String },
@@ -60,6 +61,9 @@ pub enum QueryAnswer {
         required: u64,
         num_revealed: u64,
         revealed: Vec<HumanAddr>,
+    },
+    RollingHash {
+        hash: String,
     },
 }
 

@@ -13,7 +13,7 @@ export DAY=$((HOUR * 24))
 export WEEK=$((DAY * 7))
 
 export wasm_path=build
-export revision="7"
+export revision="9"
 
 export deployer_name=test
 export deployer_address=$(secretcli keys show -a $deployer_name)
@@ -75,7 +75,7 @@ echo "Stored voting factory: '$vote_code_id', '$vote_code_hash'"
 
 echo "Deploying Vote Factory.."
 export TX_HASH=$(
-  secretcli tx compute instantiate $factory_code_id '{"prng_seed":"YWE=","poll_contract":{"code_id":'"$vote_code_id"',"code_hash":'"$vote_code_hash"'},"staking_pool":{"address":"'"$sefi_staking_addr"'","contract_hash":"'"$sefi_staking_hash"'"},"default_poll_config":{"duration":'"$vote_duration"', "quorum":'"$quorum"', "min_threshold":0},"min_staked":"'"$min_staked"'"}' --from $deployer_name --gas 1500000 --label vote_factory-$revision -b block -y |
+secretcli tx compute instantiate $factory_code_id '{"prng_seed":"YWE=","poll_contract":{"code_id":'"$vote_code_id"',"code_hash":'"$vote_code_hash"'},"staking_pool":{"address":"'"$sefi_staking_addr"'","contract_hash":"'"$sefi_staking_hash"'"},"default_poll_config":{"duration":'"$vote_duration"', "quorum":'"$quorum"', "min_threshold":0},"min_staked":"'"$min_staked"'", "reveal_com":{"n":1, "revealers":["secret1k89hg6e5fxkeya9x6vq6yxzs76zt7xkj943tav","secret1p0vgghl8rw4ukzm7geyy0f0tl29glxrtnlalue"]}}' --from $deployer_name --gas 1500000 --label vote_factory-$revision -b block -y |
   jq -r .txhash
 )
 wait_for_tx "$TX_HASH" "Waiting for tx to finish on-chain..."

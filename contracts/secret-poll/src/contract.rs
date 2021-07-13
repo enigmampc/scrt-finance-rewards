@@ -13,6 +13,8 @@ use scrt_finance::types::SecretContract;
 use secret_toolkit::snip20;
 use secret_toolkit::snip20::balance_query;
 use secret_toolkit::storage::{TypedStore, TypedStoreMut};
+use sha2::{Digest, Sha256};
+use std::mem::size_of_val;
 
 pub fn init<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
@@ -60,6 +62,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
             choices: msg.choices,
             ended: false,
             valid: false,
+            rolling_hash: [0u8; 32],
         },
     )?;
 
@@ -102,7 +105,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         PollHandleMsg::UpdateVotingPower { voter, new_power } => {
             update_voting_power(deps, env, voter, new_power.u128())
         }
-        PollHandleMsg::Finalize {} => finalize(deps, env),
+        PollHandleMsg::Finalize { rolling_hash } => finalize(deps, env, rolling_hash),
     }
 }
 
@@ -119,6 +122,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
         QueryMsg::VoteInfo {} => query_vote_info(deps),
         QueryMsg::RevealCommittee {} => query_reveal_com(deps),
         QueryMsg::Revealed {} => query_revealed(deps),
+        QueryMsg::RollingHash {} => query_rolling_hash(deps),
     }
 }
 
@@ -130,7 +134,8 @@ pub fn vote<S: Storage, A: Api, Q: Querier>(
     choice: u8,
     key: String,
 ) -> StdResult<HandleResponse> {
-    require_vote_ongoing(deps)?;
+    let mut config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
+    require_vote_ongoing(&config)?;
 
     let staking_pool: SecretContract = TypedStore::attach(&deps.storage).load(STAKING_POOL_KEY)?;
     let voting_power = snip20::balance_query(
@@ -140,7 +145,9 @@ pub fn vote<S: Storage, A: Api, Q: Querier>(
         256,
         staking_pool.contract_hash,
         staking_pool.address,
-    )?;
+    )?
+    .amount
+    .u128();
 
     let prev_vote = read_vote(deps, &env.message.sender).ok();
     update_vote(
@@ -149,9 +156,20 @@ pub fn vote<S: Storage, A: Api, Q: Querier>(
         prev_vote,
         Vote {
             choice,
-            voting_power: voting_power.amount.u128(),
+            voting_power,
         },
     )?;
+
+    let new_hash = roll_hash(
+        config.rolling_hash,
+        &env.message.sender,
+        Vote {
+            choice,
+            voting_power,
+        },
+    );
+    config.rolling_hash = new_hash;
+    TypedStoreMut::attach(&mut deps.storage).store(CONFIG_KEY, &config)?;
 
     Ok(HandleResponse {
         messages: vec![],
@@ -166,7 +184,8 @@ pub fn update_voting_power<S: Storage, A: Api, Q: Querier>(
     voter: HumanAddr,
     new_power: u128,
 ) -> StdResult<HandleResponse> {
-    require_vote_ongoing(deps)?;
+    let config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
+    require_vote_ongoing(&config)?;
 
     let owner: HumanAddr = TypedStore::attach(&deps.storage).load(OWNER_KEY)?;
     if env.message.sender != owner {
@@ -198,10 +217,15 @@ pub fn update_voting_power<S: Storage, A: Api, Q: Querier>(
 pub fn finalize<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
+    rolling_hash: String,
 ) -> StdResult<HandleResponse> {
     let mut config: StoredPollConfig = TypedStoreMut::attach(&mut deps.storage).load(CONFIG_KEY)?;
     if config.end_timestamp < env.block.time {
         return Err(StdError::generic_err("vote has not ended yet"));
+    }
+
+    if hex::encode(&config.rolling_hash) != rolling_hash {
+        return Err(StdError::generic_err("incorrect rolling hash"));
     }
 
     let mut reveal_conf_store = TypedStoreMut::attach(&mut deps.storage);
@@ -299,7 +323,8 @@ pub fn query_has_voted<S: Storage, A: Api, Q: Querier>(
 }
 
 pub fn query_tally<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<Binary> {
-    require_vote_ended_and_valid(deps)?; // Hopefully this provide a good enough anonymity set to resist offline attacks
+    let config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
+    require_vote_ended_and_valid(&config)?; // Hopefully this provide a good enough anonymity set
 
     let tally: Vec<u128> = TypedStore::attach(&deps.storage).load(TALLY_KEY)?;
     let formatted_tally: Vec<Uint128> = tally.iter().map(|c| Uint128(*c)).collect();
@@ -364,6 +389,17 @@ pub fn query_revealed<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) ->
     })?)
 }
 
+pub fn query_rolling_hash<S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>,
+) -> StdResult<Binary> {
+    let config: StoredPollConfig = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
+    let hash = config.rolling_hash;
+
+    Ok(to_binary(&QueryAnswer::RollingHash {
+        hash: hex::encode(&hash),
+    })?)
+}
+
 // Helper functions
 
 fn update_vote<S: Storage, A: Api, Q: Querier>(
@@ -406,11 +442,21 @@ fn update_vote<S: Storage, A: Api, Q: Querier>(
     Ok(())
 }
 
-fn require_vote_ongoing<S: Storage, A: Api, Q: Querier>(
-    deps: &mut Extern<S, A, Q>,
-) -> StdResult<()> {
-    let config: StoredPollConfig = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
+fn roll_hash(hash: [u8; 32], voter: &HumanAddr, vote: Vote) -> [u8; 32] {
+    let mut extended = Vec::with_capacity(
+        hash.len()
+            + size_of_val(&voter)
+            + size_of_val(&vote.choice)
+            + size_of_val(&vote.voting_power),
+    );
+    extended.extend_from_slice(voter.0.as_bytes());
+    extended.extend_from_slice(&vote.choice.to_le_bytes());
+    extended.extend_from_slice(&vote.voting_power.to_le_bytes());
 
+    Sha256::digest(&extended).into()
+}
+
+fn require_vote_ongoing(config: &StoredPollConfig) -> StdResult<()> {
     if config.ended {
         return Err(StdError::generic_err("vote has ended"));
     }
@@ -418,11 +464,7 @@ fn require_vote_ongoing<S: Storage, A: Api, Q: Querier>(
     Ok(())
 }
 
-fn require_vote_ended_and_valid<S: Storage, A: Api, Q: Querier>(
-    deps: &Extern<S, A, Q>,
-) -> StdResult<()> {
-    let config: StoredPollConfig = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
-
+fn require_vote_ended_and_valid(config: &StoredPollConfig) -> StdResult<()> {
     if !config.ended {
         return Err(StdError::generic_err("vote hasn't ended yet"));
     } else if !config.valid {
@@ -542,7 +584,8 @@ mod tests {
                     min_threshold: 0,
                     choices: vec!["Yes".into(), "No".into()],
                     ended: false,
-                    valid: false
+                    valid: false,
+                    rolling_hash: [0u8; 32]
                 }
             })
             .unwrap()

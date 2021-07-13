@@ -26,6 +26,7 @@ pub struct StoredPollConfig {
     pub choices: Vec<String>,
     pub ended: bool,
     pub valid: bool,
+    pub rolling_hash: [u8; 32],
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]

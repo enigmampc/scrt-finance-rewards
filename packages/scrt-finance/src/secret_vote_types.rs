@@ -52,7 +52,9 @@ pub enum PollHandleMsg {
         voter: HumanAddr,
         new_power: Uint128,
     },
-    Finalize {},
+    Finalize {
+        rolling_hash: String,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

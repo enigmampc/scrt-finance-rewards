@@ -29,3 +29,5 @@ scrt-finance = { path = "../../packages/scrt-finance", version = "0.1.0" }
 schemars = "0.7"
 serde = { version = "1.0.103", default-features = false, features = ["derive"] }
 snafu = { version = "0.6.3" }
+sha2 = { version = "0.9.1", default-features = false }
+hex = "0.4.2"
