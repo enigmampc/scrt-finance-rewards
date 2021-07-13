@@ -14,7 +14,7 @@ use secret_toolkit::snip20;
 use secret_toolkit::snip20::balance_query;
 use secret_toolkit::storage::{TypedStore, TypedStoreMut};
 use sha2::{Digest, Sha256};
-use std::mem::size_of_val;
+use std::mem::size_of;
 
 pub fn init<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
@@ -239,7 +239,13 @@ pub fn finalize<S: Storage, A: Api, Q: Querier>(
         .contains(&env.message.sender)
     {
         return Err(StdError::unauthorized());
-    } else if reveal_conf.num_revealed >= reveal_conf.committee.n {
+    }
+
+    reveal_conf.revealed.push(env.message.sender);
+    reveal_conf.num_revealed += 1;
+    reveal_conf_store.store(REVEAL_CONFIG, &reveal_conf)?;
+
+    if reveal_conf.num_revealed > reveal_conf.committee.n {
         let tally = TypedStore::attach(&deps.storage).load(TALLY_KEY)?; // Already revealed
         return Ok(HandleResponse {
             messages: vec![],
@@ -251,23 +257,17 @@ pub fn finalize<S: Storage, A: Api, Q: Querier>(
                 tally: Some(tally),
             })?),
         });
-    } else {
-        reveal_conf.revealed.push(env.message.sender);
-        reveal_conf.num_revealed += 1;
-        reveal_conf_store.store(REVEAL_CONFIG, &reveal_conf)?;
-
-        if reveal_conf.num_revealed < reveal_conf.committee.n {
-            return Ok(HandleResponse {
-                messages: vec![],
-                log: vec![],
-                data: Some(to_binary(&FinalizeAnswer {
-                    ended: false,
-                    valid: None,
-                    choices: None,
-                    tally: None,
-                })?),
-            });
-        }
+    } else if reveal_conf.num_revealed < reveal_conf.committee.n {
+        return Ok(HandleResponse {
+            messages: vec![],
+            log: vec![],
+            data: Some(to_binary(&FinalizeAnswer {
+                ended: false,
+                valid: None,
+                choices: None,
+                tally: None,
+            })?),
+        });
     }
 
     config.ended = true;
@@ -447,11 +447,7 @@ fn update_vote<S: Storage, A: Api, Q: Querier>(
 
 fn roll_hash(hash: [u8; 32], voter: &HumanAddr, vote: Vote, salt: String) -> [u8; 32] {
     let mut extended = Vec::with_capacity(
-        hash.len()
-            + size_of_val(&voter)
-            + size_of_val(&vote.choice)
-            + size_of_val(&vote.voting_power)
-            + size_of_val(&salt),
+        hash.len() + voter.0.len() + size_of::<u8>() + size_of::<u128>() + salt.len(),
     );
     extended.extend_from_slice(voter.0.as_bytes());
     extended.extend_from_slice(&vote.choice.to_le_bytes());
